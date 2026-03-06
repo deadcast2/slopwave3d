@@ -1,0 +1,3 @@
+# Emscripten build output
+web/slop3d_wasm.js
+web/slop3d_wasm.wasm
