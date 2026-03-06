@@ -95,9 +95,9 @@ engine.start();
 
 ## Development
 
-This engine is being built incrementally and publicly. Each development session is documented in [`docs/sessions/`](docs/sessions/) with full conversation logs, research citations, and decision rationale.
+This engine is being built incrementally and publicly with AI coding agents, following a [deliberate development philosophy](CONTRIBUTING.md) — one issue at a time, read every line, no rushing.
 
-Progress is tracked through [GitHub Issues](https://github.com/deadcast2/slopwave3d/issues).
+Each development session is documented in [`docs/sessions/`](docs/sessions/) with full conversation logs, research citations, and decision rationale. Progress is tracked through [GitHub Issues](https://github.com/deadcast2/slopwave3d/issues).
 
 ## Credits
 
