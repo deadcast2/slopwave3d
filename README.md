@@ -1,5 +1,7 @@
 # slopwave3d
 
+<!-- token-count --><!-- /token-count -->
+
 A 3D game engine for people who think graphics peaked in 2002.
 
 **slopwave3d** (slop3d) is a software rasterizer built in C that compiles to WebAssembly — no GPU, no shaders, no excuses. It renders at 320x240 with 128x128 JPG textures, affine texture mapping, and Gouraud shading. Every visual "flaw" is intentional.
@@ -94,6 +96,10 @@ engine.start();
 This engine is being built incrementally and publicly. Each development session is documented in [`docs/sessions/`](docs/sessions/) with full conversation logs, research citations, and decision rationale.
 
 Progress is tracked through [GitHub Issues](https://github.com/deadcast2/slopwave3d/issues).
+
+## Credits
+
+- Token count badge by [qwibitai/nanoclaw](https://github.com/qwibitai/nanoclaw/tree/main/repo-tokens)
 
 ## License
 
