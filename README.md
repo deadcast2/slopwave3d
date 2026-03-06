@@ -14,8 +14,8 @@ This is what happens when you build a 3D engine that fits in a single AI context
 
 Remember Shockwave 3D? LEGO Backlot? Those weird browser games that ran in a 400px window and looked like a PlayStation had a fever dream? That's what we're going for.
 
-- **Affine texture warping** — textures wobble and stretch on large polygons because we don't do perspective correction. On purpose.
-- **Gouraud shading** — lighting computed at vertices, interpolated across faces. Smooth gradients with Mach banding artifacts. Just like Shockwave 3D, which never supported anything better.
+- **Affine texture warping** — textures wobble and stretch on large polygons because we don't do perspective correction. This was characteristic of early 2000s software rasterizers, and Shockwave 3D's software fallback path likely exhibited the same behavior.
+- **Gouraud shading** — lighting computed at vertices, interpolated across faces. Smooth gradients with Mach banding artifacts. This was Shockwave 3D's standard shading model for its `#standard` shader, used by the vast majority of Shockwave 3D content.
 - **16-bit Z-buffer** — co-planar surfaces fight for their lives. Z-fighting isn't a bug, it's a feature.
 - **Nearest-neighbor filtering** — pixels are chunky. Textures are crunchy. The year is 2002 and we are free.
 - **320x240** — scaled up to your display with `image-rendering: pixelated`. Every pixel visible. Every pixel earned.
@@ -34,7 +34,7 @@ Remember Shockwave 3D? LEGO Backlot? Those weird browser games that ran in a 400
 └─────────────────────────────┘
 ```
 
-This mirrors how Shockwave 3D actually worked: a compiled engine (Intel's IFX Toolkit) with a scripting layer on top (Lingo). Here, C is the engine and JavaScript is the scripting language.
+This mirrors how Shockwave 3D actually worked: a compiled engine (Intel's Internet 3D Graphics software, internally known as the IFX Toolkit) with a scripting layer on top (Lingo). Here, C is the engine and JavaScript is the scripting language.
 
 ## Specs
 

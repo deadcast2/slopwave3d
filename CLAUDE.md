@@ -23,8 +23,8 @@ These are deliberate design choices for authenticity, not limitations to fix:
 | Z-buffer | 16-bit | Authentic z-fighting artifacts |
 | Max texture | 128x128, JPG only | Crunchy, web-compressed look |
 | Texture filtering | Nearest-neighbor | Pixelated retro aesthetic |
-| Texture mapping | Affine (NO perspective correction) | Signature Shockwave warping |
-| Shading | Gouraud only (per-vertex) | Shockwave 3D's only shading model |
+| Texture mapping | Affine (NO perspective correction) | Era-authentic software rasterizer warping |
+| Shading | Gouraud only (per-vertex) | Shockwave 3D's standard shading model |
 | Poly ceiling | ~10k per scene | Low-poly aesthetic |
 
 **Do not "fix" or "improve" these.** The affine warping, z-fighting, and pixelation ARE the look.
