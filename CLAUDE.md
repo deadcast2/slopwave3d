@@ -54,9 +54,11 @@ docs/sessions/    — Development session logs
 
 ```bash
 make              # requires Emscripten (emcc) in PATH
+make serve        # build + start local server on port 8080
+make clean        # remove build outputs
 ```
 
-Outputs `web/slop3d_wasm.js` and `web/slop3d_wasm.wasm`.
+Outputs `web/slop3d_wasm.js` and `web/slop3d_wasm.wasm`. Open `http://localhost:8080/web/index.html` to run.
 
 ## Key Technical Details
 
