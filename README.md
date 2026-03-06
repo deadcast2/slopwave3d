@@ -1,4 +1,6 @@
-# slopwave3d
+<p align="center">
+<img width="600" alt="slopwave3d-logo" src="https://github.com/user-attachments/assets/ce043ffc-a252-42d2-9bd4-0a5d0761444f" />
+</p>
 
 <!-- token-count --><!-- /token-count -->
 
@@ -24,7 +26,7 @@ Remember Shockwave 3D? LEGO Backlot? Those weird browser games that ran in a 400
 ┌─────────────────────────────┐
 │  Your Game (JavaScript)     │  ← Write your game here
 ├─────────────────────────────┤
-│  slop3d.js (JS API)        │  ← Loads assets, captures input, blits pixels
+│  slop3d.js (JS API)         │  ← Loads assets, captures input, blits pixels
 ├─────────────────────────────┤
 │  WASM Bridge (Emscripten)   │  ← C functions exported to JS
 ├─────────────────────────────┤
@@ -37,7 +39,7 @@ This mirrors how Shockwave 3D actually worked: a compiled engine (Intel's IFX To
 ## Specs
 
 | | |
-|---|---|
+| --- | --- |
 | Resolution | 320x240 |
 | Textures | 128x128 max, JPG only, nearest-neighbor |
 | Shading | Gouraud (vertex-lit) |
