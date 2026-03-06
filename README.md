@@ -105,4 +105,4 @@ Each development session is documented in [`docs/sessions/`](docs/sessions/) wit
 
 ## License
 
-MIT
+[Unlicense](LICENSE) (public domain)
