@@ -1,5 +1,5 @@
 <p align="center">
-<img width="600" alt="slopwave3d-logo" src="https://github.com/user-attachments/assets/ce043ffc-a252-42d2-9bd4-0a5d0761444f" />
+<img width="600" alt="slopwave3d-logo" src="docs/logo.png" />
 </p>
 
 <!-- token-count --><!-- /token-count -->
