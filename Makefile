@@ -42,4 +42,7 @@ clean:
 serve: all
 	python3 -m http.server 8080
 
-.PHONY: all clean serve test
+fmt:
+	clang-format -i src/slop3d.c src/slop3d.h tests/test_math.c
+
+.PHONY: all clean serve test fmt
