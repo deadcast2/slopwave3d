@@ -9,7 +9,10 @@ EXPORTED_FUNCTIONS = \
 	_s3d_frame_begin, \
 	_s3d_get_framebuffer, \
 	_s3d_get_width, \
-	_s3d_get_height
+	_s3d_get_height, \
+	_s3d_camera_set, \
+	_s3d_camera_fov, \
+	_s3d_camera_clip
 
 EXPORTED_RUNTIME = ccall,cwrap,HEAPU8
 
@@ -27,10 +30,16 @@ $(OUT): $(SRC) src/slop3d.h
 		-s "EXPORTED_FUNCTIONS=[$(EXPORTED_FUNCTIONS)]" \
 		-s "EXPORTED_RUNTIME_METHODS=[$(EXPORTED_RUNTIME)]"
 
+test: tests/test_math
+	./tests/test_math
+
+tests/test_math: tests/test_math.c $(SRC) src/slop3d.h
+	cc -o $@ $< -I src -lm -Wall -Wextra -Wno-unused-function
+
 clean:
-	rm -f web/slop3d_wasm.js web/slop3d_wasm.wasm
+	rm -f web/slop3d_wasm.js web/slop3d_wasm.wasm tests/test_math
 
 serve: all
 	python3 -m http.server 8080
 
-.PHONY: all clean serve
+.PHONY: all clean serve test

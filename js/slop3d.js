@@ -18,6 +18,12 @@ class Slop3D {
         this._getFramebuffer = this.module.cwrap('s3d_get_framebuffer', 'number', []);
         this._getWidth = this.module.cwrap('s3d_get_width', 'number', []);
         this._getHeight = this.module.cwrap('s3d_get_height', 'number', []);
+        this._cameraSet = this.module.cwrap('s3d_camera_set', null,
+            ['number', 'number', 'number', 'number', 'number', 'number',
+             'number', 'number', 'number']);
+        this._cameraFov = this.module.cwrap('s3d_camera_fov', null, ['number']);
+        this._cameraClip = this.module.cwrap('s3d_camera_clip', null,
+            ['number', 'number']);
 
         this._init();
 
@@ -30,6 +36,20 @@ class Slop3D {
 
     setClearColor(r, g, b, a = 255) {
         this._clearColor(r, g, b, a);
+    }
+
+    setCamera(pos, target, up = { x: 0, y: 1, z: 0 }) {
+        this._cameraSet(pos.x, pos.y, pos.z,
+                        target.x, target.y, target.z,
+                        up.x, up.y, up.z);
+    }
+
+    setCameraFov(degrees) {
+        this._cameraFov(degrees);
+    }
+
+    setCameraClip(near, far) {
+        this._cameraClip(near, far);
     }
 
     onUpdate(callback) {
