@@ -12,18 +12,36 @@ class Slop3D {
 
         this._init = this.module.cwrap('s3d_init', null, []);
         this._shutdown = this.module.cwrap('s3d_shutdown', null, []);
-        this._clearColor = this.module.cwrap('s3d_clear_color', null,
-            ['number', 'number', 'number', 'number']);
+        this._clearColor = this.module.cwrap('s3d_clear_color', null, [
+            'number',
+            'number',
+            'number',
+            'number',
+        ]);
         this._frameBegin = this.module.cwrap('s3d_frame_begin', null, []);
-        this._getFramebuffer = this.module.cwrap('s3d_get_framebuffer', 'number', []);
+        this._getFramebuffer = this.module.cwrap(
+            's3d_get_framebuffer',
+            'number',
+            []
+        );
         this._getWidth = this.module.cwrap('s3d_get_width', 'number', []);
         this._getHeight = this.module.cwrap('s3d_get_height', 'number', []);
-        this._cameraSet = this.module.cwrap('s3d_camera_set', null,
-            ['number', 'number', 'number', 'number', 'number', 'number',
-             'number', 'number', 'number']);
+        this._cameraSet = this.module.cwrap('s3d_camera_set', null, [
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+        ]);
         this._cameraFov = this.module.cwrap('s3d_camera_fov', null, ['number']);
-        this._cameraClip = this.module.cwrap('s3d_camera_clip', null,
-            ['number', 'number']);
+        this._cameraClip = this.module.cwrap('s3d_camera_clip', null, [
+            'number',
+            'number',
+        ]);
 
         this._init();
 
@@ -39,9 +57,17 @@ class Slop3D {
     }
 
     setCamera(pos, target, up = { x: 0, y: 1, z: 0 }) {
-        this._cameraSet(pos.x, pos.y, pos.z,
-                        target.x, target.y, target.z,
-                        up.x, up.y, up.z);
+        this._cameraSet(
+            pos.x,
+            pos.y,
+            pos.z,
+            target.x,
+            target.y,
+            target.z,
+            up.x,
+            up.y,
+            up.z
+        );
     }
 
     setCameraFov(degrees) {
@@ -66,7 +92,8 @@ class Slop3D {
 
             const fbPtr = this._getFramebuffer();
             const pixels = this.module.HEAPU8.subarray(
-                fbPtr, fbPtr + this.width * this.height * 4
+                fbPtr,
+                fbPtr + this.width * this.height * 4
             );
             this.imageData.data.set(pixels);
             this.ctx.putImageData(this.imageData, 0, 0);

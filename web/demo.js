@@ -1,4 +1,4 @@
-(async function() {
+(async function () {
     const engine = new Slop3D('game-canvas');
     await engine.init();
 

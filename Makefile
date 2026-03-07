@@ -44,5 +44,6 @@ serve: all
 
 fmt:
 	clang-format -i src/slop3d.c src/slop3d.h tests/test_math.c
+	prettier --write js/slop3d.js web/demo.js
 
 .PHONY: all clean serve test fmt
