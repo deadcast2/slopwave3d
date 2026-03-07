@@ -55,13 +55,26 @@ This mirrors how Shockwave 3D actually worked: a compiled engine (Intel's Intern
 
 ## Build
 
-Requires [Emscripten](https://emscripten.org/docs/getting_started/downloads.html):
+### Prerequisites
+
+- [Emscripten](https://emscripten.org/docs/getting_started/downloads.html) — C to WASM compiler (`emcc` must be in PATH)
+- A C compiler (`cc`/`clang`/`gcc`) — for running native tests
+- [Prettier](https://prettier.io/) — JS formatting (`npm i -g prettier`), optional
+- Python 3 — for the local dev server, optional
+
+> **Windows users:** Use [WSL](https://learn.microsoft.com/en-us/windows/wsl/install) or MinGW for `make` support.
+
+### Make Targets
 
 ```bash
-make
+make          # Build WASM output (web/slop3d_wasm.js + .wasm)
+make serve    # Build + start local server on http://localhost:8080
+make test     # Build and run C unit tests natively
+make fmt      # Auto-format C (clang-format) and JS (prettier)
+make clean    # Remove all build outputs
 ```
 
-Then open `web/index.html` in a browser.
+After building, open `http://localhost:8080/web/index.html` in a browser.
 
 ## Quick Start
 
