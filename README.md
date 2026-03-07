@@ -2,7 +2,7 @@
 <img width="600" alt="slopwave3d-logo" src="docs/logo.png" />
 </p>
 
-<!-- token-count --><!-- /token-count -->
+<!-- token-count --><a href="https://github.com/qwibitai/nanoclaw/tree/main/repo-tokens">4.9k tokens · 2% of context window</a><!-- /token-count -->
 
 A 3D game engine for people who think graphics peaked in 2002.
 
