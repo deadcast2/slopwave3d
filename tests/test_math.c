@@ -199,6 +199,135 @@ TEST(camera_clip) {
     ASSERT_NEAR(g_engine.camera.far_clip, 500.0f, 1e-6f);
 }
 
+/* ── viewport transform tests ────────────────────────────────────────── */
+
+TEST(ndc_origin_to_screen_center) {
+    S3D_ScreenVert sv = ndc_to_screen(0.0f, 0.0f, 0.0f, 1.0f, 0.5f, 0.0f);
+    ASSERT_NEAR(sv.x, 160.0f, 0.01f);
+    ASSERT_NEAR(sv.y, 120.0f, 0.01f);
+    ASSERT_NEAR(sv.z, 0.5f, 1e-6f);
+    ASSERT_NEAR(sv.r, 1.0f, 1e-6f);
+    ASSERT_NEAR(sv.g, 0.5f, 1e-6f);
+    ASSERT_NEAR(sv.b, 0.0f, 1e-6f);
+}
+
+TEST(ndc_corners) {
+    /* NDC (-1, -1) = bottom-left in NDC → screen bottom-left = (0, 240) */
+    S3D_ScreenVert bl = ndc_to_screen(-1.0f, -1.0f, -1.0f, 0, 0, 0);
+    ASSERT_NEAR(bl.x, 0.0f, 0.01f);
+    ASSERT_NEAR(bl.y, 240.0f, 0.01f);
+    ASSERT_NEAR(bl.z, 0.0f, 1e-6f);
+
+    /* NDC (1, 1) = top-right in NDC → screen top-right = (320, 0) */
+    S3D_ScreenVert tr = ndc_to_screen(1.0f, 1.0f, 1.0f, 0, 0, 0);
+    ASSERT_NEAR(tr.x, 320.0f, 0.01f);
+    ASSERT_NEAR(tr.y, 0.0f, 0.01f);
+    ASSERT_NEAR(tr.z, 1.0f, 1e-6f);
+}
+
+/* ── backface cull tests ─────────────────────────────────────────────── */
+
+TEST(backface_cw_is_front) {
+    /* CW in screen space (Y-down): top, bottom-right, bottom-left */
+    S3D_ScreenVert a = {160, 10, 0.5f, 0, 0, 1, 0, 0};
+    S3D_ScreenVert b = {200, 200, 0.5f, 0, 0, 0, 1, 0};
+    S3D_ScreenVert c = {120, 200, 0.5f, 0, 0, 0, 0, 1};
+    ASSERT_TRUE(is_front_facing(a, b, c));
+}
+
+TEST(backface_ccw_is_back) {
+    /* CCW in screen space: top, bottom-left, bottom-right */
+    S3D_ScreenVert a = {160, 10, 0.5f, 0, 0, 1, 0, 0};
+    S3D_ScreenVert b = {120, 200, 0.5f, 0, 0, 0, 0, 1};
+    S3D_ScreenVert c = {200, 200, 0.5f, 0, 0, 0, 1, 0};
+    ASSERT_TRUE(!is_front_facing(a, b, c));
+}
+
+/* ── near-plane clipping tests ───────────────────────────────────────── */
+
+TEST(clip_all_inside) {
+    S3D_ClipVert in[3] = {
+        {{0, 0, 0, 1}, 1, 0, 0, 0, 0},
+        {{1, 0, 0, 1}, 0, 1, 0, 0, 0},
+        {{0, 1, 0, 1}, 0, 0, 1, 0, 0},
+    };
+    S3D_ClipVert out[7];
+    int n = clip_near_plane(in, 3, out);
+    ASSERT_TRUE(n == 3);
+}
+
+TEST(clip_all_behind) {
+    /* w + z < 0 for all: z = -2, w = 1 → -2 + 1 = -1 < 0 */
+    S3D_ClipVert in[3] = {
+        {{0, 0, -2, 1}, 1, 0, 0, 0, 0},
+        {{1, 0, -2, 1}, 0, 1, 0, 0, 0},
+        {{0, 1, -2, 1}, 0, 0, 1, 0, 0},
+    };
+    S3D_ClipVert out[7];
+    int n = clip_near_plane(in, 3, out);
+    ASSERT_TRUE(n == 0);
+}
+
+TEST(clip_one_behind) {
+    /* Two inside (w+z >= 0), one behind → produces 4 verts (quad) */
+    S3D_ClipVert in[3] = {
+        {{0, 0, 0, 1}, 1, 0, 0, 0, 0},  /* w+z = 1, inside */
+        {{1, 0, 0, 1}, 0, 1, 0, 0, 0},  /* w+z = 1, inside */
+        {{0, 0, -2, 1}, 0, 0, 1, 0, 0}, /* w+z = -1, behind */
+    };
+    S3D_ClipVert out[7];
+    int n = clip_near_plane(in, 3, out);
+    ASSERT_TRUE(n == 4);
+}
+
+TEST(clip_two_behind) {
+    /* One inside, two behind → produces 3 verts (triangle) */
+    S3D_ClipVert in[3] = {
+        {{0, 0, 0, 1}, 1, 0, 0, 0, 0},  /* w+z = 1, inside */
+        {{1, 0, -2, 1}, 0, 1, 0, 0, 0}, /* w+z = -1, behind */
+        {{0, 0, -2, 1}, 0, 0, 1, 0, 0}, /* w+z = -1, behind */
+    };
+    S3D_ClipVert out[7];
+    int n = clip_near_plane(in, 3, out);
+    ASSERT_TRUE(n == 3);
+}
+
+/* ── rasterizer integration tests ────────────────────────────────────── */
+
+TEST(rasterize_fills_pixels) {
+    s3d_init();
+    s3d_frame_begin();
+
+    /* draw a triangle covering the center of the screen */
+    s3d_draw_triangle(0, 1, 0, 1, 0, 0, 1, -1, 0, 0, 1, 0, -1, -1, 0, 0, 0, 1);
+
+    /* check that the center pixel is no longer the clear color (black) */
+    uint32_t *fb = (uint32_t *)g_engine.framebuffer;
+    uint32_t clear = (uint32_t)g_engine.clear_r | ((uint32_t)g_engine.clear_g << 8) |
+                     ((uint32_t)g_engine.clear_b << 16) |
+                     ((uint32_t)g_engine.clear_a << 24);
+    uint32_t center = fb[120 * S3D_WIDTH + 160];
+    ASSERT_TRUE(center != clear);
+}
+
+TEST(rasterize_zbuffer_occlusion) {
+    s3d_init();
+    s3d_frame_begin();
+
+    /* front triangle: red, at z=0 */
+    s3d_draw_triangle(0, 1, 0, 1, 0, 0, 1, -1, 0, 1, 0, 0, -1, -1, 0, 1, 0, 0);
+
+    /* back triangle: blue, at z=-2 (farther), overlapping */
+    s3d_draw_triangle(0, 1, -2, 0, 0, 1, 1, -1, -2, 0, 0, 1, -1, -1, -2, 0, 0, 1);
+
+    /* center pixel should be red (front), not blue (back) */
+    uint32_t *fb = (uint32_t *)g_engine.framebuffer;
+    uint32_t center = fb[120 * S3D_WIDTH + 160];
+    uint8_t r = center & 0xFF;
+    uint8_t b = (center >> 16) & 0xFF;
+    ASSERT_TRUE(r > b); /* red channel should dominate */
+}
+
 /* ── main ────────────────────────────────────────────────────────────── */
 
 int main(void) {
@@ -231,6 +360,24 @@ int main(void) {
     RUN(camera_set);
     RUN(camera_fov);
     RUN(camera_clip);
+
+    printf("viewport:\n");
+    RUN(ndc_origin_to_screen_center);
+    RUN(ndc_corners);
+
+    printf("backface:\n");
+    RUN(backface_cw_is_front);
+    RUN(backface_ccw_is_back);
+
+    printf("clipping:\n");
+    RUN(clip_all_inside);
+    RUN(clip_all_behind);
+    RUN(clip_one_behind);
+    RUN(clip_two_behind);
+
+    printf("rasterizer:\n");
+    RUN(rasterize_fills_pixels);
+    RUN(rasterize_zbuffer_occlusion);
 
     printf("\n%d passed, %d failed\n", g_pass, g_fail);
     return g_fail > 0 ? 1 : 0;

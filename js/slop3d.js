@@ -42,6 +42,26 @@ class Slop3D {
             'number',
             'number',
         ]);
+        this._drawTriangle = this.module.cwrap('s3d_draw_triangle', null, [
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+        ]);
 
         this._init();
 
@@ -76,6 +96,29 @@ class Slop3D {
 
     setCameraClip(near, far) {
         this._cameraClip(near, far);
+    }
+
+    drawTriangle(v0, v1, v2) {
+        this._drawTriangle(
+            v0.x,
+            v0.y,
+            v0.z,
+            v0.r,
+            v0.g,
+            v0.b,
+            v1.x,
+            v1.y,
+            v1.z,
+            v1.r,
+            v1.g,
+            v1.b,
+            v2.x,
+            v2.y,
+            v2.z,
+            v2.r,
+            v2.g,
+            v2.b
+        );
     }
 
     onUpdate(callback) {

@@ -12,7 +12,8 @@ EXPORTED_FUNCTIONS = \
 	_s3d_get_height, \
 	_s3d_camera_set, \
 	_s3d_camera_fov, \
-	_s3d_camera_clip
+	_s3d_camera_clip, \
+	_s3d_draw_triangle
 
 EXPORTED_RUNTIME = ccall,cwrap,HEAPU8
 
