@@ -18,23 +18,23 @@ static inline float deg_to_rad(float deg) {
 /* ── vec3 ────────────────────────────────────────────────────────────── */
 
 static inline S3D_Vec3 v3_add(S3D_Vec3 a, S3D_Vec3 b) {
-    return (S3D_Vec3){a.x + b.x, a.y + b.y, a.z + b.z};
+    return s3d_vec3(a.x + b.x, a.y + b.y, a.z + b.z);
 }
 
 static inline S3D_Vec3 v3_sub(S3D_Vec3 a, S3D_Vec3 b) {
-    return (S3D_Vec3){a.x - b.x, a.y - b.y, a.z - b.z};
+    return s3d_vec3(a.x - b.x, a.y - b.y, a.z - b.z);
 }
 
 static inline S3D_Vec3 v3_mul(S3D_Vec3 v, float s) {
-    return (S3D_Vec3){v.x * s, v.y * s, v.z * s};
+    return s3d_vec3(v.x * s, v.y * s, v.z * s);
 }
 
 static inline S3D_Vec3 v3_scale(S3D_Vec3 a, S3D_Vec3 b) {
-    return (S3D_Vec3){a.x * b.x, a.y * b.y, a.z * b.z};
+    return s3d_vec3(a.x * b.x, a.y * b.y, a.z * b.z);
 }
 
 static inline S3D_Vec3 v3_negate(S3D_Vec3 v) {
-    return (S3D_Vec3){-v.x, -v.y, -v.z};
+    return s3d_vec3(-v.x, -v.y, -v.z);
 }
 
 static inline float v3_dot(S3D_Vec3 a, S3D_Vec3 b) {
@@ -42,8 +42,8 @@ static inline float v3_dot(S3D_Vec3 a, S3D_Vec3 b) {
 }
 
 static inline S3D_Vec3 v3_cross(S3D_Vec3 a, S3D_Vec3 b) {
-    return (S3D_Vec3){a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z,
-                      a.x * b.y - a.y * b.x};
+    return s3d_vec3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z,
+                    a.x * b.y - a.y * b.x);
 }
 
 static inline float v3_length(S3D_Vec3 v) {
@@ -53,20 +53,20 @@ static inline float v3_length(S3D_Vec3 v) {
 static inline S3D_Vec3 v3_normalize(S3D_Vec3 v) {
     float len = v3_length(v);
     if (len < 1e-8f)
-        return (S3D_Vec3){0, 0, 0};
+        return s3d_vec3(0, 0, 0);
     float inv = 1.0f / len;
-    return (S3D_Vec3){v.x * inv, v.y * inv, v.z * inv};
+    return s3d_vec3(v.x * inv, v.y * inv, v.z * inv);
 }
 
 static inline S3D_Vec3 v3_lerp(S3D_Vec3 a, S3D_Vec3 b, float t) {
-    return (S3D_Vec3){a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t,
-                      a.z + (b.z - a.z) * t};
+    return s3d_vec3(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t,
+                    a.z + (b.z - a.z) * t);
 }
 
 /* ── vec4 ────────────────────────────────────────────────────────────── */
 
 static inline S3D_Vec4 v4_from_v3(S3D_Vec3 v, float w) {
-    return (S3D_Vec4){v.x, v.y, v.z, w};
+    return s3d_vec4(v.x, v.y, v.z, w);
 }
 
 /* ── mat4 (column-major: m[col*4 + row]) ─────────────────────────────── */
@@ -92,10 +92,10 @@ static inline S3D_Mat4 m4_multiply(S3D_Mat4 a, S3D_Mat4 b) {
 }
 
 static inline S3D_Vec4 m4_mul_vec4(S3D_Mat4 m, S3D_Vec4 v) {
-    return (S3D_Vec4){m.m[0] * v.x + m.m[4] * v.y + m.m[8] * v.z + m.m[12] * v.w,
-                      m.m[1] * v.x + m.m[5] * v.y + m.m[9] * v.z + m.m[13] * v.w,
-                      m.m[2] * v.x + m.m[6] * v.y + m.m[10] * v.z + m.m[14] * v.w,
-                      m.m[3] * v.x + m.m[7] * v.y + m.m[11] * v.z + m.m[15] * v.w};
+    return s3d_vec4(m.m[0] * v.x + m.m[4] * v.y + m.m[8] * v.z + m.m[12] * v.w,
+                    m.m[1] * v.x + m.m[5] * v.y + m.m[9] * v.z + m.m[13] * v.w,
+                    m.m[2] * v.x + m.m[6] * v.y + m.m[10] * v.z + m.m[14] * v.w,
+                    m.m[3] * v.x + m.m[7] * v.y + m.m[11] * v.z + m.m[15] * v.w);
 }
 
 static inline S3D_Mat4 m4_translate(float x, float y, float z) {
@@ -148,16 +148,16 @@ static inline S3D_Mat4 m4_rotate_z(float angle_deg) {
     return r;
 }
 
-static inline S3D_Mat4 m4_perspective(float fov_deg, float aspect, float near,
-                                      float far) {
+static inline S3D_Mat4 m4_perspective(float fov_deg, float aspect, float near_val,
+                                      float far_val) {
     float f = 1.0f / tanf(deg_to_rad(fov_deg) * 0.5f);
-    float nf = near - far;
+    float nf = near_val - far_val;
     S3D_Mat4 r = {{0}};
     r.m[0] = f / aspect;
     r.m[5] = f;
-    r.m[10] = (far + near) / nf;
+    r.m[10] = (far_val + near_val) / nf;
     r.m[11] = -1.0f;
-    r.m[14] = (2.0f * far * near) / nf;
+    r.m[14] = (2.0f * far_val * near_val) / nf;
     return r;
 }
 
@@ -241,9 +241,9 @@ void s3d_init(void) {
     memset(&g_engine, 0, sizeof(g_engine));
     g_engine.clear_a = 255;
 
-    g_engine.camera.position = (S3D_Vec3){0.0f, 0.0f, 5.0f};
-    g_engine.camera.target = (S3D_Vec3){0.0f, 0.0f, 0.0f};
-    g_engine.camera.up = (S3D_Vec3){0.0f, 1.0f, 0.0f};
+    g_engine.camera.position = s3d_vec3(0.0f, 0.0f, 5.0f);
+    g_engine.camera.target = s3d_vec3(0.0f, 0.0f, 0.0f);
+    g_engine.camera.up = s3d_vec3(0.0f, 1.0f, 0.0f);
     g_engine.camera.fov = 60.0f;
     g_engine.camera.near_clip = 0.1f;
     g_engine.camera.far_clip = 100.0f;
@@ -294,9 +294,9 @@ int s3d_get_height(void) {
 EMSCRIPTEN_KEEPALIVE
 void s3d_camera_set(float px, float py, float pz, float tx, float ty, float tz, float ux,
                     float uy, float uz) {
-    g_engine.camera.position = (S3D_Vec3){px, py, pz};
-    g_engine.camera.target = (S3D_Vec3){tx, ty, tz};
-    g_engine.camera.up = (S3D_Vec3){ux, uy, uz};
+    g_engine.camera.position = s3d_vec3(px, py, pz);
+    g_engine.camera.target = s3d_vec3(tx, ty, tz);
+    g_engine.camera.up = s3d_vec3(ux, uy, uz);
     update_camera();
 }
 

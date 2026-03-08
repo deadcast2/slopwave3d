@@ -49,7 +49,7 @@ web/index.html        — Demo shell
 web/demo.js           — Example game
 Makefile              — Emscripten build (single emcc invocation)
 activex/              — ActiveX control for IE/Windows XP (Visual C++ 6.0)
-  slop3d_vc6.h/cpp    — VC6-compatible engine port
+  slop3d_compat.h     — VC6 compatibility shim (stdint, sqrtf)
   slop3d_activex.h/cpp — COM control implementation (IDispatch, IOleObject, GDI)
   slop3d_dll.cpp/def  — DLL entry points, class factory, registration
   slop3d_guids.h      — COM GUIDs and DISPIDs

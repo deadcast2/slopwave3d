@@ -14,7 +14,7 @@ echo.
 
 REM Compile all source files
 cl /c /W3 /GX /O2 /D "WIN32" /D "NDEBUG" /D "_WINDOWS" /D "_USRDLL" ^
-   slop3d_vc6.cpp slop3d_activex.cpp slop3d_dll.cpp
+   /I. /FIslop3d_compat.h /Tp ..\src\slop3d.c slop3d_activex.cpp slop3d_dll.cpp
 
 if errorlevel 1 (
     echo.
@@ -24,7 +24,7 @@ if errorlevel 1 (
 
 REM Link into DLL
 link /DLL /OUT:slop3d.dll /DEF:slop3d_dll.def ^
-     slop3d_vc6.obj slop3d_activex.obj slop3d_dll.obj ^
+     slop3d.obj slop3d_activex.obj slop3d_dll.obj ^
      ole32.lib oleaut32.lib uuid.lib gdi32.lib user32.lib advapi32.lib kernel32.lib
 
 if errorlevel 1 (

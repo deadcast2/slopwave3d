@@ -7,7 +7,7 @@
  */
 
 #include "slop3d_activex.h"
-#include "slop3d_vc6.h"
+#include "slop3d_compat.h"
 
 /* Pixels per HIMETRIC unit (approximate: 1 HIMETRIC = 0.01mm, 96 DPI) */
 #define HIMETRIC_PER_INCH 2540
