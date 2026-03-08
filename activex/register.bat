@@ -1,0 +1,3 @@
+@echo off
+echo Registering slop3d ActiveX Control...
+regsvr32 "%~dp0slop3d.dll"

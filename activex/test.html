@@ -1,0 +1,70 @@
+<html>
+<head>
+<title>slop3d - ActiveX Test</title>
+<style>
+body {
+    background-color: #1a1a2e;
+    color: #e0e0e0;
+    font-family: Tahoma, sans-serif;
+    font-size: 11px;
+    margin: 0;
+    padding: 20px;
+    text-align: center;
+}
+h1 { color: #00ff88; font-size: 16px; margin: 0 0 4px 0; }
+p  { margin: 0 0 12px 0; color: #888; }
+#controls { margin-top: 8px; }
+#controls button {
+    background: #333;
+    color: #0f0;
+    border: 1px solid #555;
+    padding: 4px 12px;
+    cursor: pointer;
+    font-family: Tahoma;
+    font-size: 11px;
+}
+#controls button:hover { background: #444; }
+</style>
+</head>
+<body>
+
+<h1>slop3d Engine - ActiveX Control</h1>
+<p>Running in Internet Explorer via COM/ActiveX</p>
+
+<!-- The ActiveX control: 640x480 (2x native 320x240) -->
+<object id="slop3d"
+        classid="clsid:A1B2C3D4-E5F6-4A7B-8C9D-0E1F2A3B4C5D"
+        width="640" height="480"
+        style="border: 1px solid #333;">
+    <p style="color: red;">ActiveX control failed to load. Make sure slop3d.dll is registered.</p>
+</object>
+
+<div id="controls">
+    <button onclick="slop3d.Start()">Start</button>
+    <button onclick="slop3d.Stop()">Stop</button>
+    <button onclick="slop3d.SetClearColor(255, 0, 0, 255)">Red</button>
+    <button onclick="slop3d.SetClearColor(0, 255, 0, 255)">Green</button>
+    <button onclick="slop3d.SetClearColor(0, 0, 255, 255)">Blue</button>
+</div>
+
+<script language="JScript">
+// Global frame counter for animation
+var t = 0;
+var engine = document.getElementById('slop3d');
+
+// Set the per-frame callback — equivalent to engine.onUpdate() in the WASM version
+engine.OnUpdate = function() {
+    t += 0.02;
+    var r = Math.floor(Math.sin(t) * 127 + 128);
+    var g = Math.floor(Math.sin(t + 2.094) * 127 + 128);
+    var b = Math.floor(Math.sin(t + 4.189) * 127 + 128);
+    engine.SetClearColor(r, g, b, 255);
+};
+
+// Initialize and start the engine
+engine.Init();
+engine.Start();
+</script>
+
+</body>
+</html>

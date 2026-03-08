@@ -1,0 +1,35 @@
+/*
+ * slop3d_guids.h — COM GUIDs for the slop3d ActiveX control
+ */
+
+#ifndef SLOP3D_GUIDS_H
+#define SLOP3D_GUIDS_H
+
+#include <objbase.h>
+
+/* {A1B2C3D4-E5F6-4A7B-8C9D-0E1F2A3B4C5D} */
+DEFINE_GUID(CLSID_Slop3DControl,
+    0xA1B2C3D4, 0xE5F6, 0x4A7B,
+    0x8C, 0x9D, 0x0E, 0x1F, 0x2A, 0x3B, 0x4C, 0x5D);
+
+/* {B2C3D4E5-F6A7-4B8C-9D0E-1F2A3B4C5D6E} */
+DEFINE_GUID(IID_ISlop3D,
+    0xB2C3D4E5, 0xF6A7, 0x4B8C,
+    0x9D, 0x0E, 0x1F, 0x2A, 0x3B, 0x4C, 0x5D, 0x6E);
+
+
+/* ISlop3D DISPIDs */
+#define DISPID_S3D_INIT          1
+#define DISPID_S3D_SHUTDOWN      2
+#define DISPID_S3D_SETCLEARCOLOR 3
+#define DISPID_S3D_FRAMEBEGIN    4
+#define DISPID_S3D_SETCAMERA     5
+#define DISPID_S3D_SETCAMERAFOV  6
+#define DISPID_S3D_SETCAMERACLIP 7
+#define DISPID_S3D_START         8
+#define DISPID_S3D_STOP          9
+#define DISPID_S3D_GETWIDTH      10
+#define DISPID_S3D_GETHEIGHT     11
+#define DISPID_S3D_ONUPDATE      12
+
+#endif /* SLOP3D_GUIDS_H */
