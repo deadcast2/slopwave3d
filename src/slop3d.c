@@ -345,7 +345,7 @@ static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1,
         float fy = (float)y + 0.5f;
 
         /* long edge: v0 → v2 */
-        float t_long = (fy - v0.y) / total_h;
+        float t_long = clampf((fy - v0.y) / total_h, 0.0f, 1.0f);
         float lx = v0.x + (v2.x - v0.x) * t_long;
         float lz = v0.z + (v2.z - v0.z) * t_long;
         float lr = v0.r + (v2.r - v0.r) * t_long;
@@ -363,7 +363,7 @@ static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1,
                 sg = v1.g;
                 sb = v1.b;
             } else {
-                float t = (fy - v0.y) / h;
+                float t = clampf((fy - v0.y) / h, 0.0f, 1.0f);
                 sx = v0.x + (v1.x - v0.x) * t;
                 sz = v0.z + (v1.z - v0.z) * t;
                 sr = v0.r + (v1.r - v0.r) * t;
@@ -373,13 +373,13 @@ static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1,
         } else {
             float h = v2.y - v1.y;
             if (h < 0.001f) {
-                sx = v1.x;
-                sz = v1.z;
-                sr = v1.r;
-                sg = v1.g;
-                sb = v1.b;
+                sx = v2.x;
+                sz = v2.z;
+                sr = v2.r;
+                sg = v2.g;
+                sb = v2.b;
             } else {
-                float t = (fy - v1.y) / h;
+                float t = clampf((fy - v1.y) / h, 0.0f, 1.0f);
                 sx = v1.x + (v2.x - v1.x) * t;
                 sz = v1.z + (v2.z - v1.z) * t;
                 sr = v1.r + (v2.r - v1.r) * t;
