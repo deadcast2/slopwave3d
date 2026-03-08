@@ -3,7 +3,7 @@ name: Update token count
 on:
   push:
     branches: [main]
-    paths: ['src/**', 'js/**', 'web/**', 'Makefile']
+    paths: ['src/**', 'js/**', 'web/**', 'activex/**', 'Makefile']
 
 permissions:
   contents: write
@@ -19,7 +19,7 @@ jobs:
       - uses: qwibitai/nanoclaw/repo-tokens@main
         id: tokens
         with:
-          include: 'src/**/*.c src/**/*.h js/**/*.js web/**/*.js web/**/*.html Makefile'
+          include: 'src/**/*.c src/**/*.h js/**/*.js web/**/*.js web/**/*.html activex/**/*.cpp activex/**/*.h activex/**/*.def activex/**/*.bat activex/**/*.html Makefile'
           context-window: 200000
           badge-path: '.github/badges/tokens.svg'
       - name: Commit if changed
