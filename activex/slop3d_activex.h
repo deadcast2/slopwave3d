@@ -187,6 +187,7 @@ private:
     UINT_PTR m_timerId;
     BOOL     m_running;
     BOOL     m_initialized;
+    BOOL     m_pendingStart;
 
     /* OnUpdate callback (JS function stored as IDispatch) */
     IDispatch* m_pOnUpdate;

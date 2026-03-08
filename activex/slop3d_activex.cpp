@@ -33,6 +33,7 @@ static const DispIdEntry g_dispIdTable[] = {
     { L"Width",          DISPID_S3D_GETWIDTH },
     { L"Height",         DISPID_S3D_GETHEIGHT },
     { L"OnUpdate",       DISPID_S3D_ONUPDATE },
+    { L"DrawTriangle",   DISPID_S3D_DRAWTRIANGLE },
     { NULL, 0 }
 };
 
@@ -92,6 +93,7 @@ CSlop3DControl::CSlop3DControl()
       m_timerId(0),
       m_running(FALSE),
       m_initialized(FALSE),
+      m_pendingStart(FALSE),
       m_pOnUpdate(NULL)
 {
     SetRect(&m_rcPos, 0, 0, S3D_WIDTH * 2, S3D_HEIGHT * 2);
@@ -260,6 +262,8 @@ STDMETHODIMP CSlop3DControl::Invoke(DISPID dispId, REFIID, LCID, WORD wFlags,
         if (m_hwnd && !m_running) {
             m_timerId = SetTimer(m_hwnd, 1, 33, NULL); /* ~30fps */
             m_running = TRUE;
+        } else if (!m_hwnd) {
+            m_pendingStart = TRUE;
         }
         return S_OK;
 
@@ -284,6 +288,20 @@ STDMETHODIMP CSlop3DControl::Invoke(DISPID dispId, REFIID, LCID, WORD wFlags,
             pVarResult->vt = VT_I4;
             pVarResult->lVal = s3d_get_height();
         }
+        return S_OK;
+
+    case DISPID_S3D_DRAWTRIANGLE:
+        if (pDispParams->cArgs < 18) return DISP_E_BADPARAMCOUNT;
+        s3d_draw_triangle(
+            GetFloatArg(pDispParams, 0),  GetFloatArg(pDispParams, 1),
+            GetFloatArg(pDispParams, 2),  GetFloatArg(pDispParams, 3),
+            GetFloatArg(pDispParams, 4),  GetFloatArg(pDispParams, 5),
+            GetFloatArg(pDispParams, 6),  GetFloatArg(pDispParams, 7),
+            GetFloatArg(pDispParams, 8),  GetFloatArg(pDispParams, 9),
+            GetFloatArg(pDispParams, 10), GetFloatArg(pDispParams, 11),
+            GetFloatArg(pDispParams, 12), GetFloatArg(pDispParams, 13),
+            GetFloatArg(pDispParams, 14), GetFloatArg(pDispParams, 15),
+            GetFloatArg(pDispParams, 16), GetFloatArg(pDispParams, 17));
         return S_OK;
 
     case DISPID_S3D_ONUPDATE:
@@ -627,6 +645,13 @@ HRESULT CSlop3DControl::InPlaceActivate(LONG) {
 
     /* Set up the GDI DIB for rendering */
     CreateDIB();
+
+    /* If Start() was called before the window existed, begin now */
+    if (m_pendingStart && !m_running) {
+        m_timerId = SetTimer(m_hwnd, 1, 33, NULL); /* ~30fps */
+        m_running = TRUE;
+        m_pendingStart = FALSE;
+    }
 
     return S_OK;
 }
