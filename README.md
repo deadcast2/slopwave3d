@@ -8,7 +8,7 @@
 
 A 3D game engine for people who think graphics peaked in 2002.
 
-**slopwave3d** (slop3d) is a software rasterizer built in C that compiles to WebAssembly — no GPU, no shaders, no excuses. It renders at 320x240 with 128x128 JPG textures, affine texture mapping, and Gouraud shading. Every visual "flaw" is intentional.
+**slopwave3d** (slop3d) is a software rasterizer built in C that compiles to WebAssembly — no GPU, no shaders, no excuses. It also ships as an ActiveX control for Internet Explorer on Windows XP, because authenticity matters. It renders at 320x240 with 128x128 JPG textures, affine texture mapping, and Gouraud shading. Every visual "flaw" is intentional.
 
 This is what happens when you build a 3D engine that fits in a single AI context window and refuses to look good.
 
@@ -25,18 +25,19 @@ Remember Shockwave 3D? LEGO Backlot? Those weird browser games that ran in a 400
 ## Architecture
 
 ```
-┌─────────────────────────────┐
-│  Your Game (JavaScript)     │  ← Write your game here
-├─────────────────────────────┤
-│  slop3d.js (JS API)         │  ← Loads assets, captures input, blits pixels
-├─────────────────────────────┤
-│  WASM Bridge (Emscripten)   │  ← C functions exported to JS
-├─────────────────────────────┤
-│  slop3d.c (C Engine Core)   │  ← Software rasterizer, math, lighting
-└─────────────────────────────┘
+  Modern Browser                    Internet Explorer 6
+┌─────────────────────┐          ┌──────────────────────┐
+│  Your Game (JS)     │          │  Your Game (JScript) │
+├─────────────────────┤          ├──────────────────────┤
+│  slop3d.js (JS API) │          │  IDispatch (COM)     │
+├─────────────────────┤          ├──────────────────────┤
+│  WASM (Emscripten)  │          │  ActiveX (GDI)       │
+├─────────────────────┤          ├──────────────────────┤
+│  slop3d.c (C Core)  │          │  slop3d.c (C Core)   │
+└─────────────────────┘          └──────────────────────┘
 ```
 
-This mirrors how Shockwave 3D actually worked: a compiled engine (Intel's Internet 3D Graphics software, internally known as the IFX Toolkit) with a scripting layer on top (Lingo). Here, C is the engine and JavaScript is the scripting language.
+This mirrors how Shockwave 3D actually worked: a compiled engine (Intel's Internet 3D Graphics software, internally known as the IFX Toolkit) with a scripting layer on top (Lingo). Here, C is the engine and JavaScript is the scripting language. The ActiveX control delivers the same engine to IE on Windows XP via COM — built with Visual C++ 6.0 for maximum era authenticity.
 
 ## Specs
 
@@ -57,16 +58,9 @@ This mirrors how Shockwave 3D actually worked: a compiled engine (Intel's Intern
 
 ## Build
 
-### Prerequisites
+### WASM (modern browsers)
 
-- [Emscripten](https://emscripten.org/docs/getting_started/downloads.html) — C to WASM compiler (`emcc` must be in PATH)
-- A C compiler (`cc`/`clang`/`gcc`) — for running native tests
-- [Prettier](https://prettier.io/) — JS formatting (`npm i -g prettier`), optional
-- Python 3 — for the local dev server, optional
-
-> **Windows users:** Use [WSL](https://learn.microsoft.com/en-us/windows/wsl/install) or MinGW for `make` support.
-
-### Make Targets
+**Prerequisites:** [Emscripten](https://emscripten.org/docs/getting_started/downloads.html) (`emcc` in PATH), a C compiler for tests, optionally [Prettier](https://prettier.io/) and Python 3.
 
 ```bash
 make          # Build WASM output (web/slop3d_wasm.js + .wasm)
@@ -77,6 +71,18 @@ make clean    # Remove all build outputs
 ```
 
 After building, open `http://localhost:8080/web/index.html` in a browser.
+
+### ActiveX (Internet Explorer / Windows XP)
+
+**Prerequisites:** Visual C++ 6.0 on Windows XP (or compatible).
+
+```batch
+cd activex
+build.bat           REM Compile slop3d.dll
+register.bat        REM Register with regsvr32
+```
+
+Open `activex/test.html` in Internet Explorer. Use `unregister.bat` to remove.
 
 ## Quick Start
 
@@ -105,7 +111,7 @@ engine.start();
 
 - The entire engine fits in an AI context window (~20K tokens). Every line is visible, every function is reachable.
 - No build complexity. One C file, one JS file, one `make` command.
-- Shockwave 3D died in 2019. This is its ghost, haunting your browser.
+- Shockwave 3D died in 2019. This is its ghost, haunting your browser — and Internet Explorer.
 - Sometimes you don't want 4K ray-traced reflections. Sometimes you want 128 pixels of a crate texture wobbling on a polygon.
 
 ## Development

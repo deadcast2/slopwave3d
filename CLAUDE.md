@@ -10,8 +10,9 @@ slop3d (repo: slopwave3d) is a compact software rasterizer 3D game engine that a
 - **WASM bridge** — compiled via Emscripten, exports C functions to JS
 - **JS API** (`js/slop3d.js`) — `Slop3D` class wrapping WASM calls, canvas blitting, asset loading
 - **Browser delivery** — `web/index.html` hosts the engine, games are scripted in JS
+- **ActiveX control** (`activex/`) — COM/GDI wrapper for Internet Explorer on Windows XP, built with Visual C++ 6.0
 
-This mirrors Shockwave 3D's own architecture: compiled engine + scripting layer.
+This mirrors Shockwave 3D's own architecture: compiled engine + scripting layer. The ActiveX target adds era-authentic IE delivery alongside the modern browser path.
 
 ## Engine Constraints (Intentional)
 
@@ -41,16 +42,25 @@ These are deliberate design choices for authenticity, not limitations to fix:
 ## File Structure
 
 ```
-src/slop3d.c      — Entire C engine (~2000 lines target)
-src/slop3d.h      — Public API header
-js/slop3d.js      — JS API wrapper + canvas blitting
-web/index.html    — Demo shell
-web/demo.js       — Example game
-Makefile          — Emscripten build (single emcc invocation)
-docs/sessions/    — Development session logs
+src/slop3d.c          — Entire C engine (~2000 lines target)
+src/slop3d.h          — Public API header
+js/slop3d.js          — JS API wrapper + canvas blitting
+web/index.html        — Demo shell
+web/demo.js           — Example game
+Makefile              — Emscripten build (single emcc invocation)
+activex/              — ActiveX control for IE/Windows XP (Visual C++ 6.0)
+  slop3d_vc6.h/cpp    — VC6-compatible engine port
+  slop3d_activex.h/cpp — COM control implementation (IDispatch, IOleObject, GDI)
+  slop3d_dll.cpp/def  — DLL entry points, class factory, registration
+  slop3d_guids.h      — COM GUIDs and DISPIDs
+  build.bat           — VC6 build script
+  test.html           — IE test page
+docs/sessions/        — Development session logs
 ```
 
 ## Build
+
+### WASM (modern browsers)
 
 ```bash
 make              # requires Emscripten (emcc) in PATH
@@ -59,6 +69,16 @@ make clean        # remove build outputs
 ```
 
 Outputs `web/slop3d_wasm.js` and `web/slop3d_wasm.wasm`. Open `http://localhost:8080/web/index.html` to run.
+
+### ActiveX (Internet Explorer / Windows XP)
+
+```batch
+build.bat         # requires Visual C++ 6.0 command prompt
+register.bat      # regsvr32 the DLL
+unregister.bat    # remove registration
+```
+
+Outputs `activex/slop3d.dll`. Open `activex/test.html` in Internet Explorer.
 
 ## Key Technical Details
 
