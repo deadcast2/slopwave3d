@@ -91,8 +91,26 @@ static BOOL SetRegKey(HKEY hRoot, const char* subkey, const char* valueName,
     return TRUE;
 }
 
-static void DeleteRegTree(HKEY hRoot, const char* subkey) {
+static void RecursiveDeleteKey(HKEY hRoot, const char* subkey) {
+    char child[256];
+    HKEY hKey;
+    DWORD size;
+    if (RegOpenKeyExA(hRoot, subkey, 0, KEY_READ, &hKey) != ERROR_SUCCESS) return;
+    size = sizeof(child);
+    while (RegEnumKeyExA(hKey, 0, child, &size, NULL, NULL, NULL, NULL) == ERROR_SUCCESS) {
+        char full[512];
+        wsprintfA(full, "%s\\%s", subkey, child);
+        RecursiveDeleteKey(hRoot, full);
+        size = sizeof(child);
+    }
+    RegCloseKey(hKey);
     RegDeleteKeyA(hRoot, subkey);
+}
+
+static BOOL SetClsidKey(const char* suffix, const char* valueName, const char* value) {
+    char key[256];
+    wsprintfA(key, "CLSID\\%s%s", CLSID_STR, suffix);
+    return SetRegKey(HKEY_CLASSES_ROOT, key, valueName, value);
 }
 
 /* ── DLL Exports ────────────────────────────────────────────────────── */
@@ -144,40 +162,16 @@ STDAPI DllCanUnloadNow(void) {
 STDAPI DllRegisterServer(void) {
     char key[256];
 
-    /* CLSID entry */
-    wsprintfA(key, "CLSID\\%s", CLSID_STR);
-    SetRegKey(HKEY_CLASSES_ROOT, key, NULL, DESCRIPTION);
-
-    /* InprocServer32 */
-    wsprintfA(key, "CLSID\\%s\\InprocServer32", CLSID_STR);
-    SetRegKey(HKEY_CLASSES_ROOT, key, NULL, g_szModulePath);
-    SetRegKey(HKEY_CLASSES_ROOT, key, "ThreadingModel", "Apartment");
-
-    /* ProgID */
-    wsprintfA(key, "CLSID\\%s\\ProgID", CLSID_STR);
-    SetRegKey(HKEY_CLASSES_ROOT, key, NULL, PROGID);
-
-    /* Control marker */
-    wsprintfA(key, "CLSID\\%s\\Control", CLSID_STR);
-    SetRegKey(HKEY_CLASSES_ROOT, key, NULL, NULL);
-
-    /* MiscStatus */
-    wsprintfA(key, "CLSID\\%s\\MiscStatus", CLSID_STR);
-    SetRegKey(HKEY_CLASSES_ROOT, key, NULL, "0");
-    wsprintfA(key, "CLSID\\%s\\MiscStatus\\1", CLSID_STR);
-    SetRegKey(HKEY_CLASSES_ROOT, key, NULL, "131473"); /* OLEMISC flags */
-
-    /* Implemented Categories */
-    wsprintfA(key, "CLSID\\%s\\Implemented Categories\\{40FC6ED4-2438-11cf-A3DB-080036F12502}", CLSID_STR);
-    SetRegKey(HKEY_CLASSES_ROOT, key, NULL, NULL);
-
-    /* Safe for Scripting */
-    wsprintfA(key, "CLSID\\%s\\Implemented Categories\\{7DD95801-9882-11CF-9FA9-00AA006C42C4}", CLSID_STR);
-    SetRegKey(HKEY_CLASSES_ROOT, key, NULL, NULL);
-
-    /* Safe for Initializing */
-    wsprintfA(key, "CLSID\\%s\\Implemented Categories\\{7DD95802-9882-11CF-9FA9-00AA006C42C4}", CLSID_STR);
-    SetRegKey(HKEY_CLASSES_ROOT, key, NULL, NULL);
+    SetClsidKey("", NULL, DESCRIPTION);
+    SetClsidKey("\\InprocServer32", NULL, g_szModulePath);
+    SetClsidKey("\\InprocServer32", "ThreadingModel", "Apartment");
+    SetClsidKey("\\ProgID", NULL, PROGID);
+    SetClsidKey("\\Control", NULL, NULL);
+    SetClsidKey("\\MiscStatus", NULL, "0");
+    SetClsidKey("\\MiscStatus\\1", NULL, "131473"); /* OLEMISC flags */
+    SetClsidKey("\\Implemented Categories\\{40FC6ED4-2438-11cf-A3DB-080036F12502}", NULL, NULL);
+    SetClsidKey("\\Implemented Categories\\{7DD95801-9882-11CF-9FA9-00AA006C42C4}", NULL, NULL);
+    SetClsidKey("\\Implemented Categories\\{7DD95802-9882-11CF-9FA9-00AA006C42C4}", NULL, NULL);
 
     /* ProgID -> CLSID mapping */
     SetRegKey(HKEY_CLASSES_ROOT, PROGID, NULL, DESCRIPTION);
@@ -192,30 +186,12 @@ STDAPI DllUnregisterServer(void) {
 
     /* Remove ProgID */
     wsprintfA(key, "%s\\CLSID", PROGID);
-    DeleteRegTree(HKEY_CLASSES_ROOT, key);
-    DeleteRegTree(HKEY_CLASSES_ROOT, PROGID);
+    RecursiveDeleteKey(HKEY_CLASSES_ROOT, key);
+    RegDeleteKeyA(HKEY_CLASSES_ROOT, PROGID);
 
-    /* Remove CLSID tree (delete leaves first, then parents) */
-    wsprintfA(key, "CLSID\\%s\\Implemented Categories\\{7DD95802-9882-11CF-9FA9-00AA006C42C4}", CLSID_STR);
-    DeleteRegTree(HKEY_CLASSES_ROOT, key);
-    wsprintfA(key, "CLSID\\%s\\Implemented Categories\\{7DD95801-9882-11CF-9FA9-00AA006C42C4}", CLSID_STR);
-    DeleteRegTree(HKEY_CLASSES_ROOT, key);
-    wsprintfA(key, "CLSID\\%s\\Implemented Categories\\{40FC6ED4-2438-11cf-A3DB-080036F12502}", CLSID_STR);
-    DeleteRegTree(HKEY_CLASSES_ROOT, key);
-    wsprintfA(key, "CLSID\\%s\\Implemented Categories", CLSID_STR);
-    DeleteRegTree(HKEY_CLASSES_ROOT, key);
-    wsprintfA(key, "CLSID\\%s\\MiscStatus\\1", CLSID_STR);
-    DeleteRegTree(HKEY_CLASSES_ROOT, key);
-    wsprintfA(key, "CLSID\\%s\\MiscStatus", CLSID_STR);
-    DeleteRegTree(HKEY_CLASSES_ROOT, key);
-    wsprintfA(key, "CLSID\\%s\\Control", CLSID_STR);
-    DeleteRegTree(HKEY_CLASSES_ROOT, key);
-    wsprintfA(key, "CLSID\\%s\\ProgID", CLSID_STR);
-    DeleteRegTree(HKEY_CLASSES_ROOT, key);
-    wsprintfA(key, "CLSID\\%s\\InprocServer32", CLSID_STR);
-    DeleteRegTree(HKEY_CLASSES_ROOT, key);
+    /* Remove entire CLSID tree recursively */
     wsprintfA(key, "CLSID\\%s", CLSID_STR);
-    DeleteRegTree(HKEY_CLASSES_ROOT, key);
+    RecursiveDeleteKey(HKEY_CLASSES_ROOT, key);
 
     return S_OK;
 }

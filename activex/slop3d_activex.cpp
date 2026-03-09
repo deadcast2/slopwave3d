@@ -39,39 +39,23 @@ static const DispIdEntry g_dispIdTable[] = {
 
 /* ── Helper: extract arg from DISPPARAMS (reversed order) ───────────── */
 
-static float GetFloatArg(DISPPARAMS* p, UINT index) {
+static double GetNumArg(DISPPARAMS* p, UINT index) {
     /* DISPPARAMS stores args in reverse: rgvarg[cArgs-1] is first arg */
     VARIANT* pv = &p->rgvarg[p->cArgs - 1 - index];
+    if (pv->vt == VT_R8) return pv->dblVal;
     if (pv->vt == VT_R4) return pv->fltVal;
-    if (pv->vt == VT_R8) return (float)pv->dblVal;
-    if (pv->vt == VT_I4) return (float)pv->lVal;
-    if (pv->vt == VT_I2) return (float)pv->iVal;
-    /* Try coercing */
+    if (pv->vt == VT_I4) return (double)pv->lVal;
+    if (pv->vt == VT_I2) return (double)pv->iVal;
     {
-        VARIANT converted;
-        VariantInit(&converted);
-        if (SUCCEEDED(VariantChangeType(&converted, pv, 0, VT_R4))) {
-            return converted.fltVal;
-        }
+        VARIANT c;
+        VariantInit(&c);
+        if (SUCCEEDED(VariantChangeType(&c, pv, 0, VT_R8))) return c.dblVal;
     }
-    return 0.0f;
+    return 0.0;
 }
 
-static int GetIntArg(DISPPARAMS* p, UINT index) {
-    VARIANT* pv = &p->rgvarg[p->cArgs - 1 - index];
-    if (pv->vt == VT_I4) return pv->lVal;
-    if (pv->vt == VT_I2) return pv->iVal;
-    if (pv->vt == VT_R8) return (int)pv->dblVal;
-    if (pv->vt == VT_R4) return (int)pv->fltVal;
-    {
-        VARIANT converted;
-        VariantInit(&converted);
-        if (SUCCEEDED(VariantChangeType(&converted, pv, 0, VT_I4))) {
-            return converted.lVal;
-        }
-    }
-    return 0;
-}
+#define GetFloatArg(p, i) ((float)GetNumArg(p, i))
+#define GetIntArg(p, i)   ((int)GetNumArg(p, i))
 
 /* ══════════════════════════════════════════════════════════════════════
  * CSlop3DControl
