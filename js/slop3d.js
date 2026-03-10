@@ -134,9 +134,16 @@ class Slop3D {
 
         const fpsEl = document.getElementById('fps');
         const ftEl = document.getElementById('frametime');
+        const frameInterval = 1000 / 30; /* ~30fps, matches ActiveX SetTimer(33ms) */
+        this._nextFrame = this._lastTime + frameInterval;
 
         const render = () => {
+            this._animFrameId = requestAnimationFrame(render);
+
             const now = performance.now();
+            if (now < this._nextFrame) return;
+            this._nextFrame += frameInterval;
+            if (this._nextFrame < now) this._nextFrame = now + frameInterval;
             const dt = now - this._lastTime;
             this._lastTime = now;
 
@@ -164,8 +171,6 @@ class Slop3D {
             );
             this.imageData.data.set(pixels);
             this.ctx.putImageData(this.imageData, 0, 0);
-
-            this._animFrameId = requestAnimationFrame(render);
         };
         this._animFrameId = requestAnimationFrame(render);
     }

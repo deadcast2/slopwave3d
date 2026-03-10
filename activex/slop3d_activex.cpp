@@ -244,7 +244,7 @@ STDMETHODIMP CSlop3DControl::Invoke(DISPID dispId, REFIID, LCID, WORD wFlags,
             m_initialized = TRUE;
         }
         if (m_hwnd && !m_running) {
-            m_timerId = SetTimer(m_hwnd, 1, 33, NULL); /* ~30fps */
+            m_timerId = SetTimer(m_hwnd, 1, 30, NULL); /* ~30fps (<=31ms to hit 2 ticks at 15.6ms resolution) */
             m_running = TRUE;
         } else if (!m_hwnd) {
             m_pendingStart = TRUE;
@@ -632,7 +632,7 @@ HRESULT CSlop3DControl::InPlaceActivate(LONG) {
 
     /* If Start() was called before the window existed, begin now */
     if (m_pendingStart && !m_running) {
-        m_timerId = SetTimer(m_hwnd, 1, 33, NULL); /* ~30fps */
+        m_timerId = SetTimer(m_hwnd, 1, 30, NULL); /* ~30fps (<=31ms to hit 2 ticks at 15.6ms resolution) */
         m_running = TRUE;
         m_pendingStart = FALSE;
     }
