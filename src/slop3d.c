@@ -425,22 +425,37 @@ static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1,
             continue;
         float inv_span = 1.0f / span;
 
+        /* precompute per-scanline step values */
+        float dz = (zr - zl) * inv_span;
+        float dr = (rr - rl) * inv_span;
+        float dg = (gr - gl) * inv_span;
+        float db = (br - bl) * inv_span;
+
+        /* initial values at ix_start */
+        float s0 = ((float)ix_start + 0.5f - xl) * inv_span;
+        float z = zl + (zr - zl) * s0;
+        float cr_f = rl + (rr - rl) * s0;
+        float cg_f = gl + (gr - gl) * s0;
+        float cb_f = bl + (br - bl) * s0;
+
         int row_offset = y * S3D_WIDTH;
 
         for (int x = ix_start; x <= ix_end; x++) {
-            float s = ((float)x + 0.5f - xl) * inv_span;
-            float z = zl + (zr - zl) * s;
             uint16_t z16 = (uint16_t)(clampf(z, 0.0f, 1.0f) * 65535.0f);
 
             int idx = row_offset + x;
             if (z16 <= g_engine.zbuffer[idx]) {
                 g_engine.zbuffer[idx] = z16;
-                uint8_t cr = (uint8_t)(clampf(rl + (rr - rl) * s, 0.0f, 1.0f) * 255.0f);
-                uint8_t cg = (uint8_t)(clampf(gl + (gr - gl) * s, 0.0f, 1.0f) * 255.0f);
-                uint8_t cb = (uint8_t)(clampf(bl + (br - bl) * s, 0.0f, 1.0f) * 255.0f);
+                uint8_t cr = (uint8_t)(clampf(cr_f, 0.0f, 1.0f) * 255.0f);
+                uint8_t cg = (uint8_t)(clampf(cg_f, 0.0f, 1.0f) * 255.0f);
+                uint8_t cb = (uint8_t)(clampf(cb_f, 0.0f, 1.0f) * 255.0f);
                 fb[idx] = (uint32_t)cr | ((uint32_t)cg << 8) | ((uint32_t)cb << 16) |
                           (255u << 24);
             }
+            z += dz;
+            cr_f += dr;
+            cg_f += dg;
+            cb_f += db;
         }
     }
 }
