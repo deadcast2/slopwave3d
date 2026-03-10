@@ -1,5 +1,6 @@
 #include "slop3d.h"
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
@@ -220,6 +221,13 @@ typedef struct {
     uint16_t zbuffer[S3D_WIDTH * S3D_HEIGHT];
     uint8_t clear_r, clear_g, clear_b, clear_a;
     S3D_Camera camera;
+
+    S3D_Texture textures[S3D_MAX_TEXTURES];
+    S3D_Mesh meshes[S3D_MAX_MESHES];
+    S3D_Vertex vertex_pool[S3D_MAX_VERTICES];
+    int vertex_pool_used;
+    S3D_Triangle triangle_pool[S3D_MAX_TRIANGLES];
+    int triangle_pool_used;
 } S3D_Engine;
 
 static S3D_Engine g_engine;
@@ -256,13 +264,13 @@ static inline S3D_ClipVert lerp_clip_vert(S3D_ClipVert *a, S3D_ClipVert *b, floa
 }
 
 static inline S3D_ScreenVert ndc_to_screen(float ndc_x, float ndc_y, float ndc_z, float r,
-                                           float g, float b) {
+                                           float g, float b, float u, float v) {
     S3D_ScreenVert sv;
     sv.x = (ndc_x * 0.5f + 0.5f) * (float)S3D_WIDTH;
     sv.y = (1.0f - (ndc_y * 0.5f + 0.5f)) * (float)S3D_HEIGHT;
     sv.z = ndc_z * 0.5f + 0.5f;
-    sv.u = 0.0f;
-    sv.v = 0.0f;
+    sv.u = u;
+    sv.v = v;
     sv.r = r;
     sv.g = g;
     sv.b = b;
@@ -309,7 +317,13 @@ static inline float clampf(float v, float lo, float hi) {
 }
 
 static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1,
-                                   S3D_ScreenVert v2) {
+                                   S3D_ScreenVert v2, int texture_id) {
+    S3D_Texture *tex = NULL;
+    if (texture_id >= 0 && texture_id < S3D_MAX_TEXTURES &&
+        g_engine.textures[texture_id].active) {
+        tex = &g_engine.textures[texture_id];
+    }
+
     /* sort by y ascending */
     S3D_ScreenVert tmp;
     if (v0.y > v1.y) {
@@ -351,9 +365,11 @@ static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1,
         float lr = v0.r + (v2.r - v0.r) * t_long;
         float lg = v0.g + (v2.g - v0.g) * t_long;
         float lb = v0.b + (v2.b - v0.b) * t_long;
+        float lu = v0.u + (v2.u - v0.u) * t_long;
+        float lv = v0.v + (v2.v - v0.v) * t_long;
 
         /* short edge */
-        float sx, sz, sr, sg, sb;
+        float sx, sz, sr, sg, sb, su, sv;
         if (fy < v1.y) {
             float h = v1.y - v0.y;
             if (h < 0.001f) {
@@ -362,6 +378,8 @@ static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1,
                 sr = v1.r;
                 sg = v1.g;
                 sb = v1.b;
+                su = v1.u;
+                sv = v1.v;
             } else {
                 float t = clampf((fy - v0.y) / h, 0.0f, 1.0f);
                 sx = v0.x + (v1.x - v0.x) * t;
@@ -369,6 +387,8 @@ static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1,
                 sr = v0.r + (v1.r - v0.r) * t;
                 sg = v0.g + (v1.g - v0.g) * t;
                 sb = v0.b + (v1.b - v0.b) * t;
+                su = v0.u + (v1.u - v0.u) * t;
+                sv = v0.v + (v1.v - v0.v) * t;
             }
         } else {
             float h = v2.y - v1.y;
@@ -378,6 +398,8 @@ static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1,
                 sr = v2.r;
                 sg = v2.g;
                 sb = v2.b;
+                su = v2.u;
+                sv = v2.v;
             } else {
                 float t = clampf((fy - v1.y) / h, 0.0f, 1.0f);
                 sx = v1.x + (v2.x - v1.x) * t;
@@ -385,6 +407,8 @@ static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1,
                 sr = v1.r + (v2.r - v1.r) * t;
                 sg = v1.g + (v2.g - v1.g) * t;
                 sb = v1.b + (v2.b - v1.b) * t;
+                su = v1.u + (v2.u - v1.u) * t;
+                sv = v1.v + (v2.v - v1.v) * t;
             }
         }
 
@@ -394,23 +418,17 @@ static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1,
         float rl = lr, rr = sr;
         float gl = lg, gr = sg;
         float bl = lb, br = sb;
+        float ul = lu, ur = su;
+        float vl = lv, vr = sv;
         if (xl > xr) {
             float t;
-            t = xl;
-            xl = xr;
-            xr = t;
-            t = zl;
-            zl = zr;
-            zr = t;
-            t = rl;
-            rl = rr;
-            rr = t;
-            t = gl;
-            gl = gr;
-            gr = t;
-            t = bl;
-            bl = br;
-            br = t;
+            t = xl;  xl = xr;  xr = t;
+            t = zl;  zl = zr;  zr = t;
+            t = rl;  rl = rr;  rr = t;
+            t = gl;  gl = gr;  gr = t;
+            t = bl;  bl = br;  br = t;
+            t = ul;  ul = ur;  ur = t;
+            t = vl;  vl = vr;  vr = t;
         }
 
         int ix_start = (int)ceilf(xl);
@@ -430,6 +448,8 @@ static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1,
         float dr = (rr - rl) * inv_span;
         float dg = (gr - gl) * inv_span;
         float db = (br - bl) * inv_span;
+        float du = (ur - ul) * inv_span;
+        float dv = (vr - vl) * inv_span;
 
         /* initial values at ix_start */
         float s0 = ((float)ix_start + 0.5f - xl) * inv_span;
@@ -437,6 +457,8 @@ static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1,
         float cr_f = rl + (rr - rl) * s0;
         float cg_f = gl + (gr - gl) * s0;
         float cb_f = bl + (br - bl) * s0;
+        float cu = ul + (ur - ul) * s0;
+        float cv = vl + (vr - vl) * s0;
 
         int row_offset = y * S3D_WIDTH;
 
@@ -446,9 +468,24 @@ static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1,
             int idx = row_offset + x;
             if (z16 <= g_engine.zbuffer[idx]) {
                 g_engine.zbuffer[idx] = z16;
-                uint8_t cr = (uint8_t)(clampf(cr_f, 0.0f, 1.0f) * 255.0f);
-                uint8_t cg = (uint8_t)(clampf(cg_f, 0.0f, 1.0f) * 255.0f);
-                uint8_t cb = (uint8_t)(clampf(cb_f, 0.0f, 1.0f) * 255.0f);
+                float fr = clampf(cr_f, 0.0f, 1.0f);
+                float fg = clampf(cg_f, 0.0f, 1.0f);
+                float fb_c = clampf(cb_f, 0.0f, 1.0f);
+
+                if (tex) {
+                    int wmask = tex->width - 1;
+                    int hmask = tex->height - 1;
+                    int iu = (int)(cu * (float)tex->width) & wmask;
+                    int iv = (int)(cv * (float)tex->height) & hmask;
+                    int tidx = (iv * tex->width + iu) * 4;
+                    fr *= tex->pixels[tidx] * (1.0f / 255.0f);
+                    fg *= tex->pixels[tidx + 1] * (1.0f / 255.0f);
+                    fb_c *= tex->pixels[tidx + 2] * (1.0f / 255.0f);
+                }
+
+                uint8_t cr = (uint8_t)(fr * 255.0f);
+                uint8_t cg = (uint8_t)(fg * 255.0f);
+                uint8_t cb = (uint8_t)(fb_c * 255.0f);
                 fb[idx] = (uint32_t)cr | ((uint32_t)cg << 8) | ((uint32_t)cb << 16) |
                           (255u << 24);
             }
@@ -456,6 +493,8 @@ static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1,
             cr_f += dr;
             cg_f += dg;
             cb_f += db;
+            cu += du;
+            cv += dv;
         }
     }
 }
@@ -594,16 +633,313 @@ void s3d_draw_triangle(float x0, float y0, float z0, float r0, float g0, float b
         float inv_w2 = 1.0f / c->clip.w;
 
         S3D_ScreenVert sv0 = ndc_to_screen(a->clip.x * inv_w0, a->clip.y * inv_w0,
-                                           a->clip.z * inv_w0, a->r, a->g, a->b);
+                                           a->clip.z * inv_w0, a->r, a->g, a->b,
+                                           a->u, a->v);
         S3D_ScreenVert sv1 = ndc_to_screen(b->clip.x * inv_w1, b->clip.y * inv_w1,
-                                           b->clip.z * inv_w1, b->r, b->g, b->b);
+                                           b->clip.z * inv_w1, b->r, b->g, b->b,
+                                           b->u, b->v);
         S3D_ScreenVert sv2 = ndc_to_screen(c->clip.x * inv_w2, c->clip.y * inv_w2,
-                                           c->clip.z * inv_w2, c->r, c->g, c->b);
+                                           c->clip.z * inv_w2, c->r, c->g, c->b,
+                                           c->u, c->v);
 
         /* backface cull */
         if (!is_front_facing(sv0, sv1, sv2))
             continue;
 
-        s3d_rasterize_triangle(sv0, sv1, sv2);
+        s3d_rasterize_triangle(sv0, sv1, sv2, -1);
+    }
+}
+
+/* ── texture API ─────────────────────────────────────────────────────── */
+
+EMSCRIPTEN_KEEPALIVE
+int s3d_texture_create(int width, int height) {
+    if (width <= 0 || width > S3D_MAX_TEX_SIZE || height <= 0 || height > S3D_MAX_TEX_SIZE)
+        return -1;
+    for (int i = 0; i < S3D_MAX_TEXTURES; i++) {
+        if (!g_engine.textures[i].active) {
+            g_engine.textures[i].active = 1;
+            g_engine.textures[i].width = width;
+            g_engine.textures[i].height = height;
+            return i;
+        }
+    }
+    return -1;
+}
+
+EMSCRIPTEN_KEEPALIVE
+uint8_t *s3d_texture_get_data_ptr(int texture_id) {
+    if (texture_id < 0 || texture_id >= S3D_MAX_TEXTURES ||
+        !g_engine.textures[texture_id].active)
+        return 0;
+    return g_engine.textures[texture_id].pixels;
+}
+
+/* ── mesh API ────────────────────────────────────────────────────────── */
+
+EMSCRIPTEN_KEEPALIVE
+int s3d_mesh_create(int vertex_count, int triangle_count) {
+    if (vertex_count <= 0 || triangle_count <= 0)
+        return -1;
+    if (g_engine.vertex_pool_used + vertex_count > S3D_MAX_VERTICES)
+        return -1;
+    if (g_engine.triangle_pool_used + triangle_count > S3D_MAX_TRIANGLES)
+        return -1;
+    for (int i = 0; i < S3D_MAX_MESHES; i++) {
+        if (!g_engine.meshes[i].active) {
+            g_engine.meshes[i].active = 1;
+            g_engine.meshes[i].vertex_offset = g_engine.vertex_pool_used;
+            g_engine.meshes[i].vertex_count = vertex_count;
+            g_engine.meshes[i].triangle_offset = g_engine.triangle_pool_used;
+            g_engine.meshes[i].triangle_count = triangle_count;
+            g_engine.vertex_pool_used += vertex_count;
+            g_engine.triangle_pool_used += triangle_count;
+            return i;
+        }
+    }
+    return -1;
+}
+
+EMSCRIPTEN_KEEPALIVE
+float *s3d_mesh_get_vertex_ptr(int mesh_id) {
+    if (mesh_id < 0 || mesh_id >= S3D_MAX_MESHES || !g_engine.meshes[mesh_id].active)
+        return 0;
+    return (float *)&g_engine.vertex_pool[g_engine.meshes[mesh_id].vertex_offset];
+}
+
+EMSCRIPTEN_KEEPALIVE
+uint16_t *s3d_mesh_get_index_ptr(int mesh_id) {
+    if (mesh_id < 0 || mesh_id >= S3D_MAX_MESHES || !g_engine.meshes[mesh_id].active)
+        return 0;
+    return (uint16_t *)&g_engine.triangle_pool[g_engine.meshes[mesh_id].triangle_offset];
+}
+
+/* ── OBJ parser ──────────────────────────────────────────────────────── */
+
+#define S3D_OBJ_MAX 4096
+
+EMSCRIPTEN_KEEPALIVE
+int s3d_mesh_load_obj(const char *obj_text, int len) {
+    static float positions[S3D_OBJ_MAX * 3];
+    static float texcoords[S3D_OBJ_MAX * 2];
+    static float normals[S3D_OBJ_MAX * 3];
+    int pos_count = 0, tex_count = 0, norm_count = 0;
+
+    /* temporary vertex/triangle output */
+    static S3D_Vertex tmp_verts[S3D_OBJ_MAX * 3];
+    static S3D_Triangle tmp_tris[S3D_OBJ_MAX * 2];
+    int vert_count = 0, tri_count = 0;
+
+    const char *p = obj_text;
+    const char *end = obj_text + len;
+
+    while (p < end) {
+        /* skip whitespace */
+        while (p < end && (*p == ' ' || *p == '\t'))
+            p++;
+
+        if (p >= end)
+            break;
+
+        if (*p == 'v' && p + 1 < end && p[1] == ' ') {
+            /* vertex position: v x y z */
+            float x = 0, y = 0, z = 0;
+            p += 2;
+            x = (float)strtod(p, (char **)&p);
+            y = (float)strtod(p, (char **)&p);
+            z = (float)strtod(p, (char **)&p);
+            if (pos_count < S3D_OBJ_MAX) {
+                positions[pos_count * 3] = x;
+                positions[pos_count * 3 + 1] = y;
+                positions[pos_count * 3 + 2] = z;
+                pos_count++;
+            }
+        } else if (*p == 'v' && p + 1 < end && p[1] == 't' && p + 2 < end && p[2] == ' ') {
+            /* texcoord: vt u v */
+            float u = 0, v = 0;
+            p += 3;
+            u = (float)strtod(p, (char **)&p);
+            v = (float)strtod(p, (char **)&p);
+            if (tex_count < S3D_OBJ_MAX) {
+                texcoords[tex_count * 2] = u;
+                texcoords[tex_count * 2 + 1] = v;
+                tex_count++;
+            }
+        } else if (*p == 'v' && p + 1 < end && p[1] == 'n' && p + 2 < end && p[2] == ' ') {
+            /* normal: vn x y z */
+            float x = 0, y = 0, z = 0;
+            p += 3;
+            x = (float)strtod(p, (char **)&p);
+            y = (float)strtod(p, (char **)&p);
+            z = (float)strtod(p, (char **)&p);
+            if (norm_count < S3D_OBJ_MAX) {
+                normals[norm_count * 3] = x;
+                normals[norm_count * 3 + 1] = y;
+                normals[norm_count * 3 + 2] = z;
+                norm_count++;
+            }
+        } else if (*p == 'f' && p + 1 < end && p[1] == ' ') {
+            /* face: f v/vt/vn ... (fan-triangulate) */
+            p += 2;
+            int face_verts[32];
+            int face_count = 0;
+
+            while (p < end && *p != '\n' && *p != '\r') {
+                while (p < end && (*p == ' ' || *p == '\t'))
+                    p++;
+                if (p >= end || *p == '\n' || *p == '\r')
+                    break;
+
+                int vi = 0, ti = 0, ni = 0;
+                vi = (int)strtol(p, (char **)&p, 10);
+                if (p < end && *p == '/') {
+                    p++;
+                    if (p < end && *p != '/') {
+                        ti = (int)strtol(p, (char **)&p, 10);
+                    }
+                    if (p < end && *p == '/') {
+                        p++;
+                        ni = (int)strtol(p, (char **)&p, 10);
+                    }
+                }
+
+                /* resolve 1-based (and negative) indices */
+                if (vi < 0)
+                    vi = pos_count + vi + 1;
+                if (ti < 0)
+                    ti = tex_count + ti + 1;
+                if (ni < 0)
+                    ni = norm_count + ni + 1;
+                vi--;
+                ti--;
+                ni--;
+
+                if (face_count < 32 && vert_count < S3D_OBJ_MAX * 3) {
+                    S3D_Vertex vert;
+                    memset(&vert, 0, sizeof(vert));
+                    if (vi >= 0 && vi < pos_count) {
+                        vert.x = positions[vi * 3];
+                        vert.y = positions[vi * 3 + 1];
+                        vert.z = positions[vi * 3 + 2];
+                    }
+                    if (ti >= 0 && ti < tex_count) {
+                        vert.u = texcoords[ti * 2];
+                        vert.v = texcoords[ti * 2 + 1];
+                    }
+                    if (ni >= 0 && ni < norm_count) {
+                        vert.nx = normals[ni * 3];
+                        vert.ny = normals[ni * 3 + 1];
+                        vert.nz = normals[ni * 3 + 2];
+                    }
+                    face_verts[face_count] = vert_count;
+                    tmp_verts[vert_count++] = vert;
+                    face_count++;
+                }
+            }
+
+            /* fan-triangulate */
+            for (int i = 1; i < face_count - 1 && tri_count < S3D_OBJ_MAX * 2; i++) {
+                tmp_tris[tri_count].i0 = (uint16_t)face_verts[0];
+                tmp_tris[tri_count].i1 = (uint16_t)face_verts[i];
+                tmp_tris[tri_count].i2 = (uint16_t)face_verts[i + 1];
+                tri_count++;
+            }
+        }
+
+        /* skip to end of line */
+        while (p < end && *p != '\n')
+            p++;
+        if (p < end)
+            p++; /* skip newline */
+    }
+
+    if (vert_count == 0 || tri_count == 0)
+        return -1;
+
+    int mesh_id = s3d_mesh_create(vert_count, tri_count);
+    if (mesh_id < 0)
+        return -1;
+
+    /* copy vertex data — indices in tmp_tris are absolute so make them relative */
+    int voff = g_engine.meshes[mesh_id].vertex_offset;
+    int toff = g_engine.meshes[mesh_id].triangle_offset;
+    memcpy(&g_engine.vertex_pool[voff], tmp_verts, vert_count * sizeof(S3D_Vertex));
+    for (int i = 0; i < tri_count; i++) {
+        g_engine.triangle_pool[toff + i].i0 = tmp_tris[i].i0;
+        g_engine.triangle_pool[toff + i].i1 = tmp_tris[i].i1;
+        g_engine.triangle_pool[toff + i].i2 = tmp_tris[i].i2;
+    }
+
+    return mesh_id;
+}
+
+/* ── mesh drawing ────────────────────────────────────────────────────── */
+
+EMSCRIPTEN_KEEPALIVE
+void s3d_draw_mesh(int mesh_id, int texture_id) {
+    if (mesh_id < 0 || mesh_id >= S3D_MAX_MESHES || !g_engine.meshes[mesh_id].active)
+        return;
+
+    S3D_Mesh *mesh = &g_engine.meshes[mesh_id];
+    S3D_Mat4 vp = g_engine.camera.vp;
+
+    for (int t = 0; t < mesh->triangle_count; t++) {
+        S3D_Triangle *tri = &g_engine.triangle_pool[mesh->triangle_offset + t];
+        S3D_Vertex *v0 = &g_engine.vertex_pool[mesh->vertex_offset + tri->i0];
+        S3D_Vertex *v1 = &g_engine.vertex_pool[mesh->vertex_offset + tri->i1];
+        S3D_Vertex *v2 = &g_engine.vertex_pool[mesh->vertex_offset + tri->i2];
+
+        /* transform to clip space */
+        S3D_ClipVert cv[3];
+        cv[0].clip = m4_mul_vec4(vp, s3d_vec4(v0->x, v0->y, v0->z, 1.0f));
+        cv[0].r = 1.0f;
+        cv[0].g = 1.0f;
+        cv[0].b = 1.0f;
+        cv[0].u = v0->u;
+        cv[0].v = v0->v;
+        cv[1].clip = m4_mul_vec4(vp, s3d_vec4(v1->x, v1->y, v1->z, 1.0f));
+        cv[1].r = 1.0f;
+        cv[1].g = 1.0f;
+        cv[1].b = 1.0f;
+        cv[1].u = v1->u;
+        cv[1].v = v1->v;
+        cv[2].clip = m4_mul_vec4(vp, s3d_vec4(v2->x, v2->y, v2->z, 1.0f));
+        cv[2].r = 1.0f;
+        cv[2].g = 1.0f;
+        cv[2].b = 1.0f;
+        cv[2].u = v2->u;
+        cv[2].v = v2->v;
+
+        /* near-plane clip */
+        S3D_ClipVert clipped[7];
+        int n = clip_near_plane(cv, 3, clipped);
+        if (n < 3)
+            continue;
+
+        /* fan clipped polygon into triangles */
+        for (int i = 1; i < n - 1; i++) {
+            S3D_ClipVert *a = &clipped[0];
+            S3D_ClipVert *b = &clipped[i];
+            S3D_ClipVert *c = &clipped[i + 1];
+
+            float inv_w0 = 1.0f / a->clip.w;
+            float inv_w1 = 1.0f / b->clip.w;
+            float inv_w2 = 1.0f / c->clip.w;
+
+            S3D_ScreenVert sv0 = ndc_to_screen(a->clip.x * inv_w0, a->clip.y * inv_w0,
+                                               a->clip.z * inv_w0, a->r, a->g, a->b,
+                                               a->u, a->v);
+            S3D_ScreenVert sv1 = ndc_to_screen(b->clip.x * inv_w1, b->clip.y * inv_w1,
+                                               b->clip.z * inv_w1, b->r, b->g, b->b,
+                                               b->u, b->v);
+            S3D_ScreenVert sv2 = ndc_to_screen(c->clip.x * inv_w2, c->clip.y * inv_w2,
+                                               c->clip.z * inv_w2, c->r, c->g, c->b,
+                                               c->u, c->v);
+
+            if (!is_front_facing(sv0, sv1, sv2))
+                continue;
+
+            s3d_rasterize_triangle(sv0, sv1, sv2, texture_id);
+        }
     }
 }

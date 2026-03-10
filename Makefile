@@ -13,7 +13,16 @@ EXPORTED_FUNCTIONS = \
 	_s3d_camera_set, \
 	_s3d_camera_fov, \
 	_s3d_camera_clip, \
-	_s3d_draw_triangle
+	_s3d_draw_triangle, \
+	_s3d_texture_create, \
+	_s3d_texture_get_data_ptr, \
+	_s3d_mesh_create, \
+	_s3d_mesh_get_vertex_ptr, \
+	_s3d_mesh_get_index_ptr, \
+	_s3d_mesh_load_obj, \
+	_s3d_draw_mesh, \
+	_malloc, \
+	_free
 
 EXPORTED_RUNTIME = ccall,cwrap,HEAPU8
 

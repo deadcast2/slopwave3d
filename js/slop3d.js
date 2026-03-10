@@ -62,6 +62,25 @@ class Slop3D {
             'number',
             'number',
         ]);
+        this._textureCreate = this.module.cwrap(
+            's3d_texture_create',
+            'number',
+            ['number', 'number']
+        );
+        this._textureGetDataPtr = this.module.cwrap(
+            's3d_texture_get_data_ptr',
+            'number',
+            ['number']
+        );
+        this._meshLoadObj = this.module.cwrap(
+            's3d_mesh_load_obj',
+            'number',
+            ['number', 'number']
+        );
+        this._drawMesh = this.module.cwrap('s3d_draw_mesh', null, [
+            'number',
+            'number',
+        ]);
 
         this._init();
 
@@ -119,6 +138,48 @@ class Slop3D {
             v2.g,
             v2.b
         );
+    }
+
+    async loadTexture(url) {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = reject;
+            img.src = url;
+        });
+        const w = Math.min(img.width, 128);
+        const h = Math.min(img.height, 128);
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        const rgba = ctx.getImageData(0, 0, w, h).data;
+
+        const texId = this._textureCreate(w, h);
+        if (texId < 0) throw new Error('No free texture slots');
+        const ptr = this._textureGetDataPtr(texId);
+        this.module.HEAPU8.set(rgba, ptr);
+        return texId;
+    }
+
+    async loadOBJ(url) {
+        const resp = await fetch(url);
+        const text = await resp.text();
+        const encoder = new TextEncoder();
+        const bytes = encoder.encode(text);
+        const ptr = this.module._malloc(bytes.length + 1);
+        this.module.HEAPU8.set(bytes, ptr);
+        this.module.HEAPU8[ptr + bytes.length] = 0;
+        const meshId = this._meshLoadObj(ptr, bytes.length);
+        this.module._free(ptr);
+        if (meshId < 0) throw new Error('Failed to parse OBJ');
+        return meshId;
+    }
+
+    drawMesh(meshId, textureId = -1) {
+        this._drawMesh(meshId, textureId);
     }
 
     onUpdate(callback) {

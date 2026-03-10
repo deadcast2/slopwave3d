@@ -202,7 +202,7 @@ TEST(camera_clip) {
 /* ── viewport transform tests ────────────────────────────────────────── */
 
 TEST(ndc_origin_to_screen_center) {
-    S3D_ScreenVert sv = ndc_to_screen(0.0f, 0.0f, 0.0f, 1.0f, 0.5f, 0.0f);
+    S3D_ScreenVert sv = ndc_to_screen(0.0f, 0.0f, 0.0f, 1.0f, 0.5f, 0.0f, 0.0f, 0.0f);
     ASSERT_NEAR(sv.x, 160.0f, 0.01f);
     ASSERT_NEAR(sv.y, 120.0f, 0.01f);
     ASSERT_NEAR(sv.z, 0.5f, 1e-6f);
@@ -213,13 +213,13 @@ TEST(ndc_origin_to_screen_center) {
 
 TEST(ndc_corners) {
     /* NDC (-1, -1) = bottom-left in NDC → screen bottom-left = (0, 240) */
-    S3D_ScreenVert bl = ndc_to_screen(-1.0f, -1.0f, -1.0f, 0, 0, 0);
+    S3D_ScreenVert bl = ndc_to_screen(-1.0f, -1.0f, -1.0f, 0, 0, 0, 0, 0);
     ASSERT_NEAR(bl.x, 0.0f, 0.01f);
     ASSERT_NEAR(bl.y, 240.0f, 0.01f);
     ASSERT_NEAR(bl.z, 0.0f, 1e-6f);
 
     /* NDC (1, 1) = top-right in NDC → screen top-right = (320, 0) */
-    S3D_ScreenVert tr = ndc_to_screen(1.0f, 1.0f, 1.0f, 0, 0, 0);
+    S3D_ScreenVert tr = ndc_to_screen(1.0f, 1.0f, 1.0f, 0, 0, 0, 0, 0);
     ASSERT_NEAR(tr.x, 320.0f, 0.01f);
     ASSERT_NEAR(tr.y, 0.0f, 0.01f);
     ASSERT_NEAR(tr.z, 1.0f, 1e-6f);

@@ -46,6 +46,20 @@ var lastTime = new Date().getTime();
 var frameCount = 0;
 var fpsAccum = 0;
 
+engine.Init();
+
+/* Resolve asset paths relative to this HTML file's directory. */
+var path = unescape(document.URL);
+if (path.substring(0, 8) == "file:///") path = path.substring(8);
+else if (path.substring(0, 7) == "file://") path = path.substring(7);
+path = path.replace(/\//g, '\\');
+var baseDir = path.substring(0, path.lastIndexOf('\\') + 1);
+
+var texPath = baseDir + "crate.jpg";
+var objPath = baseDir + "cube.obj";
+var textureId = engine.LoadTexture(texPath);
+var meshId = engine.LoadOBJ(objPath);
+
 engine.OnUpdate = function() {
     var now = new Date().getTime();
     var dt = now - lastTime;
@@ -63,24 +77,13 @@ engine.OnUpdate = function() {
     }
 
     t += 0.02;
-    var camX = Math.sin(t) * 5;
-    var camZ = Math.cos(t) * 5;
-    engine.SetCamera(camX, 2, camZ, 0, 0, 0, 0, 1, 0);
+    var camX = Math.sin(t) * 3;
+    var camZ = Math.cos(t) * 3;
+    engine.SetCamera(camX, 1.5, camZ, 0, 0, 0, 0, 1, 0);
 
-    // Front triangle — RGB corners
-    engine.DrawTriangle(
-        0, 1, 0, 1, 0, 0,
-        1, -1, 0, 0, 1, 0,
-        -1, -1, 0, 0, 0, 1);
-
-    // Back triangle — CMY corners, partially occluded
-    engine.DrawTriangle(
-        0, 1.5, -2, 1, 1, 0,
-        1.5, -1, -2, 0, 1, 1,
-        -1.5, -1, -2, 1, 0, 1);
+    engine.DrawMesh(meshId, textureId);
 };
 
-engine.Init();
 engine.Start();
 </script>
 

@@ -34,6 +34,9 @@ static const DispIdEntry g_dispIdTable[] = {
     { L"Height",         DISPID_S3D_GETHEIGHT },
     { L"OnUpdate",       DISPID_S3D_ONUPDATE },
     { L"DrawTriangle",   DISPID_S3D_DRAWTRIANGLE },
+    { L"LoadTexture",   DISPID_S3D_LOADTEXTURE },
+    { L"LoadOBJ",       DISPID_S3D_LOADOBJ },
+    { L"DrawMesh",      DISPID_S3D_DRAWMESH },
     { NULL, 0 }
 };
 
@@ -286,6 +289,138 @@ STDMETHODIMP CSlop3DControl::Invoke(DISPID dispId, REFIID, LCID, WORD wFlags,
             GetFloatArg(pDispParams, 12), GetFloatArg(pDispParams, 13),
             GetFloatArg(pDispParams, 14), GetFloatArg(pDispParams, 15),
             GetFloatArg(pDispParams, 16), GetFloatArg(pDispParams, 17));
+        return S_OK;
+
+    case DISPID_S3D_LOADTEXTURE: {
+        /* LoadTexture(path) — load JPEG via IPicture, return texture_id */
+        if (pDispParams->cArgs < 1) return DISP_E_BADPARAMCOUNT;
+        VARIANT vPath;
+        VariantInit(&vPath);
+        if (FAILED(VariantChangeType(&vPath, &pDispParams->rgvarg[pDispParams->cArgs - 1], 0, VT_BSTR)))
+            return DISP_E_TYPEMISMATCH;
+
+        char szPath[MAX_PATH];
+        WideCharToMultiByte(CP_ACP, 0, vPath.bstrVal, -1, szPath, MAX_PATH, NULL, NULL);
+        VariantClear(&vPath);
+
+        /* Read file into memory */
+        HANDLE hFile = CreateFileA(szPath, GENERIC_READ, FILE_SHARE_READ, NULL,
+                                    OPEN_EXISTING, 0, NULL);
+        if (hFile == INVALID_HANDLE_VALUE) {
+            if (pVarResult) { VariantInit(pVarResult); pVarResult->vt = VT_I4; pVarResult->lVal = -1; }
+            return S_OK;
+        }
+        DWORD fileSize = GetFileSize(hFile, NULL);
+        HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, fileSize);
+        LPVOID pBuf = GlobalLock(hMem);
+        DWORD bytesRead;
+        ReadFile(hFile, pBuf, fileSize, &bytesRead, NULL);
+        GlobalUnlock(hMem);
+        CloseHandle(hFile);
+
+        /* Create IStream and load IPicture */
+        IStream* pStream = NULL;
+        CreateStreamOnHGlobal(hMem, TRUE, &pStream);
+        IPicture* pPic = NULL;
+        HRESULT hrPic = OleLoadPicture(pStream, 0, FALSE, IID_IPicture, (void**)&pPic);
+        pStream->Release();
+        if (FAILED(hrPic) || !pPic) {
+            if (pVarResult) { VariantInit(pVarResult); pVarResult->vt = VT_I4; pVarResult->lVal = -1; }
+            return S_OK;
+        }
+
+        /* Get image dimensions in HIMETRIC */
+        OLE_XSIZE_HIMETRIC hmW;
+        OLE_YSIZE_HIMETRIC hmH;
+        pPic->get_Width(&hmW);
+        pPic->get_Height(&hmH);
+
+        /* Render to a 128x128 DIB section */
+        int texW = 128, texH = 128;
+        BITMAPINFO bmi;
+        memset(&bmi, 0, sizeof(bmi));
+        bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+        bmi.bmiHeader.biWidth = texW;
+        bmi.bmiHeader.biHeight = -texH; /* top-down */
+        bmi.bmiHeader.biPlanes = 1;
+        bmi.bmiHeader.biBitCount = 32;
+        bmi.bmiHeader.biCompression = BI_RGB;
+
+        BYTE* pBits = NULL;
+        HDC hdcScreen = GetDC(NULL);
+        HDC hdcTex = CreateCompatibleDC(hdcScreen);
+        HBITMAP hbmTex = CreateDIBSection(hdcTex, &bmi, DIB_RGB_COLORS, (void**)&pBits, NULL, 0);
+        HBITMAP hbmOld = (HBITMAP)SelectObject(hdcTex, hbmTex);
+        ReleaseDC(NULL, hdcScreen);
+
+        pPic->Render(hdcTex, 0, 0, texW, texH, 0, hmH, hmW, -hmH, NULL);
+        pPic->Release();
+
+        /* Create engine texture and copy BGRA→RGBA */
+        int texId = s3d_texture_create(texW, texH);
+        if (texId >= 0) {
+            uint8_t* dst = s3d_texture_get_data_ptr(texId);
+            int count = texW * texH;
+            int i;
+            for (i = 0; i < count; i++) {
+                dst[i * 4]     = pBits[i * 4 + 2]; /* R <- B */
+                dst[i * 4 + 1] = pBits[i * 4 + 1]; /* G <- G */
+                dst[i * 4 + 2] = pBits[i * 4];     /* B <- R */
+                dst[i * 4 + 3] = 255;               /* A */
+            }
+        }
+
+        SelectObject(hdcTex, hbmOld);
+        DeleteObject(hbmTex);
+        DeleteDC(hdcTex);
+
+        if (pVarResult) {
+            VariantInit(pVarResult);
+            pVarResult->vt = VT_I4;
+            pVarResult->lVal = texId;
+        }
+        return S_OK;
+    }
+
+    case DISPID_S3D_LOADOBJ: {
+        /* LoadOBJ(path) — read OBJ file, parse, return mesh_id */
+        if (pDispParams->cArgs < 1) return DISP_E_BADPARAMCOUNT;
+        VARIANT vPath;
+        VariantInit(&vPath);
+        if (FAILED(VariantChangeType(&vPath, &pDispParams->rgvarg[pDispParams->cArgs - 1], 0, VT_BSTR)))
+            return DISP_E_TYPEMISMATCH;
+
+        char szPath[MAX_PATH];
+        WideCharToMultiByte(CP_ACP, 0, vPath.bstrVal, -1, szPath, MAX_PATH, NULL, NULL);
+        VariantClear(&vPath);
+
+        HANDLE hFile = CreateFileA(szPath, GENERIC_READ, FILE_SHARE_READ, NULL,
+                                    OPEN_EXISTING, 0, NULL);
+        if (hFile == INVALID_HANDLE_VALUE) {
+            if (pVarResult) { VariantInit(pVarResult); pVarResult->vt = VT_I4; pVarResult->lVal = -1; }
+            return S_OK;
+        }
+        DWORD fileSize = GetFileSize(hFile, NULL);
+        char* buf = (char*)GlobalAlloc(GPTR, fileSize + 1);
+        DWORD bytesRead;
+        ReadFile(hFile, buf, fileSize, &bytesRead, NULL);
+        CloseHandle(hFile);
+        buf[fileSize] = '\0';
+
+        int meshId = s3d_mesh_load_obj(buf, (int)fileSize);
+        GlobalFree((HGLOBAL)buf);
+
+        if (pVarResult) {
+            VariantInit(pVarResult);
+            pVarResult->vt = VT_I4;
+            pVarResult->lVal = meshId;
+        }
+        return S_OK;
+    }
+
+    case DISPID_S3D_DRAWMESH:
+        if (pDispParams->cArgs < 2) return DISP_E_BADPARAMCOUNT;
+        s3d_draw_mesh(GetIntArg(pDispParams, 0), GetIntArg(pDispParams, 1));
         return S_OK;
 
     case DISPID_S3D_ONUPDATE:
