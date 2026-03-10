@@ -126,7 +126,31 @@ class Slop3D {
     }
 
     start() {
+        this._lastTime = performance.now();
+        this._frameCount = 0;
+        this._fpsAccum = 0;
+        this._fpsDisplay = 0;
+        this._ftDisplay = 0;
+
+        const fpsEl = document.getElementById('fps');
+        const ftEl = document.getElementById('frametime');
+
         const render = () => {
+            const now = performance.now();
+            const dt = now - this._lastTime;
+            this._lastTime = now;
+
+            this._frameCount++;
+            this._fpsAccum += dt;
+            if (this._fpsAccum >= 500) {
+                this._fpsDisplay = (this._frameCount / this._fpsAccum) * 1000;
+                this._ftDisplay = this._fpsAccum / this._frameCount;
+                this._frameCount = 0;
+                this._fpsAccum = 0;
+                if (fpsEl) fpsEl.textContent = 'FPS: ' + this._fpsDisplay.toFixed(1);
+                if (ftEl) ftEl.textContent = 'Frame: ' + this._ftDisplay.toFixed(2) + ' ms';
+            }
+
             this._frameBegin();
 
             if (this._onUpdate) {

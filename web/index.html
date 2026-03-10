@@ -12,16 +12,29 @@
             align-items: center;
             height: 100vh;
         }
+        #game-container {
+            width: 640px;
+        }
         #game-canvas {
             image-rendering: pixelated;
             image-rendering: crisp-edges;
             width: 640px;
             height: 480px;
         }
+        #stats {
+            color: #0f0;
+            font: 12px monospace;
+            padding: 4px 0;
+        }
     </style>
 </head>
 <body>
-    <canvas id="game-canvas"></canvas>
+    <div id="game-container">
+        <canvas id="game-canvas"></canvas>
+        <div id="stats">
+            <span id="fps">FPS: --</span> &nbsp; <span id="frametime">Frame: -- ms</span>
+        </div>
+    </div>
     <script src="slop3d_wasm.js"></script>
     <script src="../js/slop3d.js"></script>
     <script src="demo.js"></script>
