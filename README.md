@@ -6,6 +6,10 @@
 <a href="https://github.com/qwibitai/nanoclaw/tree/main/repo-tokens"><img src=".github/badges/tokens.svg" alt="token count" valign="middle"></a>
 </p>
 
+<p align="center">
+<img src="web/assets/demo.gif" alt="slop3d demo" width="640" />
+</p>
+
 A 3D game engine for people who think graphics peaked in 2002.
 
 **slopwave3d** (slop3d) is a software rasterizer built in C that compiles to WebAssembly — no GPU, no shaders, no excuses. It renders at 320x240 with 128x128 JPG textures, affine texture mapping, and Gouraud shading. Every visual "flaw" is intentional.
