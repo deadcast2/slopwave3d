@@ -228,6 +228,7 @@ typedef struct {
     int vertex_pool_used;
     S3D_Triangle triangle_pool[S3D_MAX_TRIANGLES];
     int triangle_pool_used;
+    S3D_Object objects[S3D_MAX_OBJECTS];
 } S3D_Engine;
 
 static S3D_Engine g_engine;
@@ -317,7 +318,8 @@ static inline float clampf(float v, float lo, float hi) {
 }
 
 static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1,
-                                   S3D_ScreenVert v2, int texture_id) {
+                                   S3D_ScreenVert v2, int texture_id,
+                                   float obj_alpha) {
     S3D_Texture *tex = NULL;
     if (texture_id >= 0 && texture_id < S3D_MAX_TEXTURES &&
         g_engine.textures[texture_id].active) {
@@ -481,7 +483,6 @@ static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1,
 
             int idx = row_offset + x;
             if (z16 <= g_engine.zbuffer[idx]) {
-                g_engine.zbuffer[idx] = z16;
                 float fr = clampf(cr_f, 0.0f, 1.0f);
                 float fg = clampf(cg_f, 0.0f, 1.0f);
                 float fb_c = clampf(cb_f, 0.0f, 1.0f);
@@ -497,11 +498,28 @@ static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1,
                     fb_c *= tex->pixels[tidx + 2] * (1.0f / 255.0f);
                 }
 
-                uint8_t cr = (uint8_t)(fr * 255.0f);
-                uint8_t cg = (uint8_t)(fg * 255.0f);
-                uint8_t cb = (uint8_t)(fb_c * 255.0f);
-                fb[idx] = (uint32_t)cr | ((uint32_t)cg << 8) | ((uint32_t)cb << 16) |
-                          (255u << 24);
+                if (obj_alpha >= 1.0f) {
+                    g_engine.zbuffer[idx] = z16;
+                    uint8_t cr = (uint8_t)(fr * 255.0f);
+                    uint8_t cg = (uint8_t)(fg * 255.0f);
+                    uint8_t cb = (uint8_t)(fb_c * 255.0f);
+                    fb[idx] = (uint32_t)cr | ((uint32_t)cg << 8) |
+                              ((uint32_t)cb << 16) | (255u << 24);
+                } else {
+                    uint32_t dst = fb[idx];
+                    float dr = (float)(dst & 0xFF) * (1.0f / 255.0f);
+                    float dg = (float)((dst >> 8) & 0xFF) * (1.0f / 255.0f);
+                    float db = (float)((dst >> 16) & 0xFF) * (1.0f / 255.0f);
+                    float inv_a = 1.0f - obj_alpha;
+                    fr = fr * obj_alpha + dr * inv_a;
+                    fg = fg * obj_alpha + dg * inv_a;
+                    fb_c = fb_c * obj_alpha + db * inv_a;
+                    uint8_t cr = (uint8_t)(clampf(fr, 0.0f, 1.0f) * 255.0f);
+                    uint8_t cg = (uint8_t)(clampf(fg, 0.0f, 1.0f) * 255.0f);
+                    uint8_t cb = (uint8_t)(clampf(fb_c, 0.0f, 1.0f) * 255.0f);
+                    fb[idx] = (uint32_t)cr | ((uint32_t)cg << 8) |
+                              ((uint32_t)cb << 16) | (255u << 24);
+                }
             }
             z += dz;
             cr_f += dr;
@@ -602,67 +620,6 @@ void s3d_camera_clip(float near_clip, float far_clip) {
     update_camera();
 }
 
-EMSCRIPTEN_KEEPALIVE
-void s3d_draw_triangle(float x0, float y0, float z0, float r0, float g0, float b0,
-                       float x1, float y1, float z1, float r1, float g1, float b1,
-                       float x2, float y2, float z2, float r2, float g2, float b2) {
-    S3D_Mat4 vp = g_engine.camera.vp;
-
-    /* transform to clip space */
-    S3D_ClipVert tri[3];
-    tri[0].clip = m4_mul_vec4(vp, s3d_vec4(x0, y0, z0, 1.0f));
-    tri[0].r = r0;
-    tri[0].g = g0;
-    tri[0].b = b0;
-    tri[0].u = 0.0f;
-    tri[0].v = 0.0f;
-    tri[1].clip = m4_mul_vec4(vp, s3d_vec4(x1, y1, z1, 1.0f));
-    tri[1].r = r1;
-    tri[1].g = g1;
-    tri[1].b = b1;
-    tri[1].u = 0.0f;
-    tri[1].v = 0.0f;
-    tri[2].clip = m4_mul_vec4(vp, s3d_vec4(x2, y2, z2, 1.0f));
-    tri[2].r = r2;
-    tri[2].g = g2;
-    tri[2].b = b2;
-    tri[2].u = 0.0f;
-    tri[2].v = 0.0f;
-
-    /* near-plane clip */
-    S3D_ClipVert clipped[7];
-    int n = clip_near_plane(tri, 3, clipped);
-    if (n < 3)
-        return;
-
-    /* fan clipped polygon into triangles */
-    for (int i = 1; i < n - 1; i++) {
-        S3D_ClipVert *a = &clipped[0];
-        S3D_ClipVert *b = &clipped[i];
-        S3D_ClipVert *c = &clipped[i + 1];
-
-        /* perspective divide */
-        float inv_w0 = 1.0f / a->clip.w;
-        float inv_w1 = 1.0f / b->clip.w;
-        float inv_w2 = 1.0f / c->clip.w;
-
-        S3D_ScreenVert sv0 =
-            ndc_to_screen(a->clip.x * inv_w0, a->clip.y * inv_w0, a->clip.z * inv_w0,
-                          a->r, a->g, a->b, a->u, a->v);
-        S3D_ScreenVert sv1 =
-            ndc_to_screen(b->clip.x * inv_w1, b->clip.y * inv_w1, b->clip.z * inv_w1,
-                          b->r, b->g, b->b, b->u, b->v);
-        S3D_ScreenVert sv2 =
-            ndc_to_screen(c->clip.x * inv_w2, c->clip.y * inv_w2, c->clip.z * inv_w2,
-                          c->r, c->g, c->b, c->u, c->v);
-
-        /* backface cull */
-        if (!is_front_facing(sv0, sv1, sv2))
-            continue;
-
-        s3d_rasterize_triangle(sv0, sv1, sv2, -1);
-    }
-}
 
 /* ── texture API ─────────────────────────────────────────────────────── */
 
@@ -890,15 +847,14 @@ int s3d_mesh_load_obj(const char *obj_text, int len) {
     return mesh_id;
 }
 
-/* ── mesh drawing ────────────────────────────────────────────────────── */
+/* ── internal object drawing ─────────────────────────────────────────── */
 
-EMSCRIPTEN_KEEPALIVE
-void s3d_draw_mesh(int mesh_id, int texture_id) {
+static void draw_object_internal(int mesh_id, int texture_id, S3D_Mat4 mvp,
+                                 S3D_Vec3 color, float alpha) {
     if (mesh_id < 0 || mesh_id >= S3D_MAX_MESHES || !g_engine.meshes[mesh_id].active)
         return;
 
     S3D_Mesh *mesh = &g_engine.meshes[mesh_id];
-    S3D_Mat4 vp = g_engine.camera.vp;
 
     for (int t = 0; t < mesh->triangle_count; t++) {
         S3D_Triangle *tri = &g_engine.triangle_pool[mesh->triangle_offset + t];
@@ -906,34 +862,31 @@ void s3d_draw_mesh(int mesh_id, int texture_id) {
         S3D_Vertex *v1 = &g_engine.vertex_pool[mesh->vertex_offset + tri->i1];
         S3D_Vertex *v2 = &g_engine.vertex_pool[mesh->vertex_offset + tri->i2];
 
-        /* transform to clip space */
         S3D_ClipVert cv[3];
-        cv[0].clip = m4_mul_vec4(vp, s3d_vec4(v0->x, v0->y, v0->z, 1.0f));
-        cv[0].r = 1.0f;
-        cv[0].g = 1.0f;
-        cv[0].b = 1.0f;
+        cv[0].clip = m4_mul_vec4(mvp, s3d_vec4(v0->x, v0->y, v0->z, 1.0f));
+        cv[0].r = color.x;
+        cv[0].g = color.y;
+        cv[0].b = color.z;
         cv[0].u = v0->u;
         cv[0].v = v0->v;
-        cv[1].clip = m4_mul_vec4(vp, s3d_vec4(v1->x, v1->y, v1->z, 1.0f));
-        cv[1].r = 1.0f;
-        cv[1].g = 1.0f;
-        cv[1].b = 1.0f;
+        cv[1].clip = m4_mul_vec4(mvp, s3d_vec4(v1->x, v1->y, v1->z, 1.0f));
+        cv[1].r = color.x;
+        cv[1].g = color.y;
+        cv[1].b = color.z;
         cv[1].u = v1->u;
         cv[1].v = v1->v;
-        cv[2].clip = m4_mul_vec4(vp, s3d_vec4(v2->x, v2->y, v2->z, 1.0f));
-        cv[2].r = 1.0f;
-        cv[2].g = 1.0f;
-        cv[2].b = 1.0f;
+        cv[2].clip = m4_mul_vec4(mvp, s3d_vec4(v2->x, v2->y, v2->z, 1.0f));
+        cv[2].r = color.x;
+        cv[2].g = color.y;
+        cv[2].b = color.z;
         cv[2].u = v2->u;
         cv[2].v = v2->v;
 
-        /* near-plane clip */
         S3D_ClipVert clipped[7];
         int n = clip_near_plane(cv, 3, clipped);
         if (n < 3)
             continue;
 
-        /* fan clipped polygon into triangles */
         for (int i = 1; i < n - 1; i++) {
             S3D_ClipVert *a = &clipped[0];
             S3D_ClipVert *b = &clipped[i];
@@ -956,7 +909,147 @@ void s3d_draw_mesh(int mesh_id, int texture_id) {
             if (!is_front_facing(sv0, sv1, sv2))
                 continue;
 
-            s3d_rasterize_triangle(sv0, sv1, sv2, texture_id);
+            s3d_rasterize_triangle(sv0, sv1, sv2, texture_id, alpha);
         }
+    }
+}
+
+/* ── object API ─────────────────────────────────────────────────────── */
+
+static void rebuild_model_matrix(S3D_Object *obj) {
+    S3D_Mat4 t = m4_translate(obj->position.x, obj->position.y, obj->position.z);
+    S3D_Mat4 ry = m4_rotate_y(obj->rotation.y);
+    S3D_Mat4 rx = m4_rotate_x(obj->rotation.x);
+    S3D_Mat4 rz = m4_rotate_z(obj->rotation.z);
+    S3D_Mat4 s = m4_scale(obj->scale.x, obj->scale.y, obj->scale.z);
+    obj->model = m4_multiply(t, m4_multiply(ry, m4_multiply(rx, m4_multiply(rz, s))));
+}
+
+EMSCRIPTEN_KEEPALIVE
+int s3d_object_create(int mesh_id, int texture_id) {
+    for (int i = 0; i < S3D_MAX_OBJECTS; i++) {
+        if (!g_engine.objects[i].active) {
+            S3D_Object *obj = &g_engine.objects[i];
+            obj->active = 1;
+            obj->mesh_id = mesh_id;
+            obj->texture_id = texture_id;
+            obj->position = s3d_vec3(0.0f, 0.0f, 0.0f);
+            obj->rotation = s3d_vec3(0.0f, 0.0f, 0.0f);
+            obj->scale = s3d_vec3(1.0f, 1.0f, 1.0f);
+            obj->color = s3d_vec3(1.0f, 1.0f, 1.0f);
+            obj->alpha = 1.0f;
+            rebuild_model_matrix(obj);
+            return i;
+        }
+    }
+    return -1;
+}
+
+EMSCRIPTEN_KEEPALIVE
+void s3d_object_destroy(int object_id) {
+    if (object_id < 0 || object_id >= S3D_MAX_OBJECTS)
+        return;
+    g_engine.objects[object_id].active = 0;
+}
+
+EMSCRIPTEN_KEEPALIVE
+void s3d_object_position(int object_id, float x, float y, float z) {
+    if (object_id < 0 || object_id >= S3D_MAX_OBJECTS || !g_engine.objects[object_id].active)
+        return;
+    g_engine.objects[object_id].position = s3d_vec3(x, y, z);
+    rebuild_model_matrix(&g_engine.objects[object_id]);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void s3d_object_rotation(int object_id, float rx, float ry, float rz) {
+    if (object_id < 0 || object_id >= S3D_MAX_OBJECTS || !g_engine.objects[object_id].active)
+        return;
+    g_engine.objects[object_id].rotation = s3d_vec3(rx, ry, rz);
+    rebuild_model_matrix(&g_engine.objects[object_id]);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void s3d_object_scale(int object_id, float sx, float sy, float sz) {
+    if (object_id < 0 || object_id >= S3D_MAX_OBJECTS || !g_engine.objects[object_id].active)
+        return;
+    g_engine.objects[object_id].scale = s3d_vec3(sx, sy, sz);
+    rebuild_model_matrix(&g_engine.objects[object_id]);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void s3d_object_color(int object_id, float r, float g, float b) {
+    if (object_id < 0 || object_id >= S3D_MAX_OBJECTS || !g_engine.objects[object_id].active)
+        return;
+    g_engine.objects[object_id].color = s3d_vec3(r, g, b);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void s3d_object_alpha(int object_id, float a) {
+    if (object_id < 0 || object_id >= S3D_MAX_OBJECTS || !g_engine.objects[object_id].active)
+        return;
+    g_engine.objects[object_id].alpha = a;
+}
+
+EMSCRIPTEN_KEEPALIVE
+void s3d_object_active(int object_id, int active) {
+    if (object_id < 0 || object_id >= S3D_MAX_OBJECTS)
+        return;
+    g_engine.objects[object_id].active = active;
+}
+
+/* ── scene rendering ────────────────────────────────────────────────── */
+
+EMSCRIPTEN_KEEPALIVE
+void s3d_render_scene(void) {
+    S3D_Mat4 vp = g_engine.camera.vp;
+    S3D_Vec3 cam_pos = g_engine.camera.position;
+
+    int opaque[S3D_MAX_OBJECTS];
+    int opaque_count = 0;
+    int transparent[S3D_MAX_OBJECTS];
+    float transparent_dist[S3D_MAX_OBJECTS];
+    int transparent_count = 0;
+
+    for (int i = 0; i < S3D_MAX_OBJECTS; i++) {
+        S3D_Object *obj = &g_engine.objects[i];
+        if (!obj->active)
+            continue;
+        if (obj->alpha >= 1.0f) {
+            opaque[opaque_count++] = i;
+        } else {
+            float dx = obj->model.m[12] - cam_pos.x;
+            float dy = obj->model.m[13] - cam_pos.y;
+            float dz = obj->model.m[14] - cam_pos.z;
+            transparent_dist[transparent_count] = dx * dx + dy * dy + dz * dz;
+            transparent[transparent_count++] = i;
+        }
+    }
+
+    /* render opaque objects */
+    for (int i = 0; i < opaque_count; i++) {
+        S3D_Object *obj = &g_engine.objects[opaque[i]];
+        S3D_Mat4 mvp = m4_multiply(vp, obj->model);
+        draw_object_internal(obj->mesh_id, obj->texture_id, mvp, obj->color, obj->alpha);
+    }
+
+    /* sort transparent objects back-to-front (insertion sort) */
+    for (int i = 1; i < transparent_count; i++) {
+        int key_idx = transparent[i];
+        float key_dist = transparent_dist[i];
+        int j = i - 1;
+        while (j >= 0 && transparent_dist[j] < key_dist) {
+            transparent[j + 1] = transparent[j];
+            transparent_dist[j + 1] = transparent_dist[j];
+            j--;
+        }
+        transparent[j + 1] = key_idx;
+        transparent_dist[j + 1] = key_dist;
+    }
+
+    /* render transparent objects far-to-near */
+    for (int i = 0; i < transparent_count; i++) {
+        S3D_Object *obj = &g_engine.objects[transparent[i]];
+        S3D_Mat4 mvp = m4_multiply(vp, obj->model);
+        draw_object_internal(obj->mesh_id, obj->texture_id, mvp, obj->color, obj->alpha);
     }
 }

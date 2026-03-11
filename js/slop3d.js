@@ -42,26 +42,6 @@ class Slop3D {
             'number',
             'number',
         ]);
-        this._drawTriangle = this.module.cwrap('s3d_draw_triangle', null, [
-            'number',
-            'number',
-            'number',
-            'number',
-            'number',
-            'number',
-            'number',
-            'number',
-            'number',
-            'number',
-            'number',
-            'number',
-            'number',
-            'number',
-            'number',
-            'number',
-            'number',
-            'number',
-        ]);
         this._textureCreate = this.module.cwrap(
             's3d_texture_create',
             'number',
@@ -76,10 +56,46 @@ class Slop3D {
             'number',
             'number',
         ]);
-        this._drawMesh = this.module.cwrap('s3d_draw_mesh', null, [
+        this._objectCreate = this.module.cwrap('s3d_object_create', 'number', [
             'number',
             'number',
         ]);
+        this._objectDestroy = this.module.cwrap('s3d_object_destroy', null, [
+            'number',
+        ]);
+        this._objectPosition = this.module.cwrap('s3d_object_position', null, [
+            'number',
+            'number',
+            'number',
+            'number',
+        ]);
+        this._objectRotation = this.module.cwrap('s3d_object_rotation', null, [
+            'number',
+            'number',
+            'number',
+            'number',
+        ]);
+        this._objectScale = this.module.cwrap('s3d_object_scale', null, [
+            'number',
+            'number',
+            'number',
+            'number',
+        ]);
+        this._objectColor = this.module.cwrap('s3d_object_color', null, [
+            'number',
+            'number',
+            'number',
+            'number',
+        ]);
+        this._objectAlpha = this.module.cwrap('s3d_object_alpha', null, [
+            'number',
+            'number',
+        ]);
+        this._objectActive = this.module.cwrap('s3d_object_active', null, [
+            'number',
+            'number',
+        ]);
+        this._renderScene = this.module.cwrap('s3d_render_scene', null, []);
 
         this._init();
 
@@ -114,29 +130,6 @@ class Slop3D {
 
     setCameraClip(near, far) {
         this._cameraClip(near, far);
-    }
-
-    drawTriangle(v0, v1, v2) {
-        this._drawTriangle(
-            v0.x,
-            v0.y,
-            v0.z,
-            v0.r,
-            v0.g,
-            v0.b,
-            v1.x,
-            v1.y,
-            v1.z,
-            v1.r,
-            v1.g,
-            v1.b,
-            v2.x,
-            v2.y,
-            v2.z,
-            v2.r,
-            v2.g,
-            v2.b
-        );
     }
 
     async loadTexture(url) {
@@ -177,8 +170,40 @@ class Slop3D {
         return meshId;
     }
 
-    drawMesh(meshId, textureId = -1) {
-        this._drawMesh(meshId, textureId);
+    createObject(meshId, textureId = -1) {
+        return this._objectCreate(meshId, textureId);
+    }
+
+    destroyObject(objectId) {
+        this._objectDestroy(objectId);
+    }
+
+    setObjectPosition(id, x, y, z) {
+        this._objectPosition(id, x, y, z);
+    }
+
+    setObjectRotation(id, rx, ry, rz) {
+        this._objectRotation(id, rx, ry, rz);
+    }
+
+    setObjectScale(id, sx, sy, sz) {
+        this._objectScale(id, sx, sy, sz);
+    }
+
+    setObjectColor(id, r, g, b) {
+        this._objectColor(id, r, g, b);
+    }
+
+    setObjectAlpha(id, a) {
+        this._objectAlpha(id, a);
+    }
+
+    setObjectActive(id, active) {
+        this._objectActive(id, active);
+    }
+
+    renderScene() {
+        this._renderScene();
     }
 
     onUpdate(callback) {

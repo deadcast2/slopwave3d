@@ -13,14 +13,21 @@ EXPORTED_FUNCTIONS = \
 	_s3d_camera_set, \
 	_s3d_camera_fov, \
 	_s3d_camera_clip, \
-	_s3d_draw_triangle, \
 	_s3d_texture_create, \
 	_s3d_texture_get_data_ptr, \
 	_s3d_mesh_create, \
 	_s3d_mesh_get_vertex_ptr, \
 	_s3d_mesh_get_index_ptr, \
 	_s3d_mesh_load_obj, \
-	_s3d_draw_mesh, \
+	_s3d_object_create, \
+	_s3d_object_destroy, \
+	_s3d_object_position, \
+	_s3d_object_rotation, \
+	_s3d_object_scale, \
+	_s3d_object_color, \
+	_s3d_object_alpha, \
+	_s3d_object_active, \
+	_s3d_render_scene, \
 	_malloc, \
 	_free
 

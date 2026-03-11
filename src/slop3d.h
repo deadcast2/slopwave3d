@@ -18,6 +18,7 @@ typedef signed long int32_t;
 #define S3D_MAX_VERTICES 32768
 #define S3D_MAX_TRIANGLES 65536
 #define S3D_MAX_TEX_SIZE 128
+#define S3D_MAX_OBJECTS 256
 
 typedef struct {
     float x, y, z;
@@ -70,6 +71,18 @@ typedef struct {
     uint8_t pixels[S3D_MAX_TEX_SIZE * S3D_MAX_TEX_SIZE * 4];
 } S3D_Texture;
 
+typedef struct {
+    int active;
+    int mesh_id;
+    int texture_id;
+    S3D_Vec3 position;
+    S3D_Vec3 rotation;
+    S3D_Vec3 scale;
+    S3D_Vec3 color;
+    float alpha;
+    S3D_Mat4 model;
+} S3D_Object;
+
 void s3d_init(void);
 void s3d_shutdown(void);
 void s3d_clear_color(uint8_t r, uint8_t g, uint8_t b, uint8_t a);
@@ -83,10 +96,6 @@ void s3d_camera_set(float px, float py, float pz, float tx, float ty, float tz, 
 void s3d_camera_fov(float fov_degrees);
 void s3d_camera_clip(float near_clip, float far_clip);
 
-void s3d_draw_triangle(float x0, float y0, float z0, float r0, float g0, float b0,
-                       float x1, float y1, float z1, float r1, float g1, float b1,
-                       float x2, float y2, float z2, float r2, float g2, float b2);
-
 int s3d_texture_create(int width, int height);
 uint8_t *s3d_texture_get_data_ptr(int texture_id);
 
@@ -95,6 +104,14 @@ float *s3d_mesh_get_vertex_ptr(int mesh_id);
 uint16_t *s3d_mesh_get_index_ptr(int mesh_id);
 int s3d_mesh_load_obj(const char *obj_text, int len);
 
-void s3d_draw_mesh(int mesh_id, int texture_id);
+int s3d_object_create(int mesh_id, int texture_id);
+void s3d_object_destroy(int object_id);
+void s3d_object_position(int object_id, float x, float y, float z);
+void s3d_object_rotation(int object_id, float rx, float ry, float rz);
+void s3d_object_scale(int object_id, float sx, float sy, float sz);
+void s3d_object_color(int object_id, float r, float g, float b);
+void s3d_object_alpha(int object_id, float a);
+void s3d_object_active(int object_id, int active);
+void s3d_render_scene(void);
 
 #endif

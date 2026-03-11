@@ -294,14 +294,39 @@ TEST(clip_two_behind) {
 
 /* ── rasterizer integration tests ────────────────────────────────────── */
 
+/* helper: create a simple 1-triangle mesh for tests */
+static int make_test_tri_mesh(float x0, float y0, float z0,
+                              float x1, float y1, float z1,
+                              float x2, float y2, float z2) {
+    int mid = s3d_mesh_create(3, 1);
+    if (mid < 0) return -1;
+    float *vp = s3d_mesh_get_vertex_ptr(mid);
+    /* vertex 0 */
+    vp[0] = x0; vp[1] = y0; vp[2] = z0;
+    vp[3] = 0; vp[4] = 0; vp[5] = 1; /* normal */
+    vp[6] = 0; vp[7] = 0;             /* uv */
+    /* vertex 1 */
+    vp[8] = x1; vp[9] = y1; vp[10] = z1;
+    vp[11] = 0; vp[12] = 0; vp[13] = 1;
+    vp[14] = 0; vp[15] = 0;
+    /* vertex 2 */
+    vp[16] = x2; vp[17] = y2; vp[18] = z2;
+    vp[19] = 0; vp[20] = 0; vp[21] = 1;
+    vp[22] = 0; vp[23] = 0;
+    uint16_t *ip = s3d_mesh_get_index_ptr(mid);
+    ip[0] = 0; ip[1] = 1; ip[2] = 2;
+    return mid;
+}
+
 TEST(rasterize_fills_pixels) {
     s3d_init();
     s3d_frame_begin();
 
-    /* draw a triangle covering the center of the screen */
-    s3d_draw_triangle(0, 1, 0, 1, 0, 0, 1, -1, 0, 0, 1, 0, -1, -1, 0, 0, 0, 1);
+    int mid = make_test_tri_mesh(0, 1, 0, 1, -1, 0, -1, -1, 0);
+    int oid = s3d_object_create(mid, -1);
+    s3d_object_color(oid, 1, 0, 0);
+    s3d_render_scene();
 
-    /* check that the center pixel is no longer the clear color (black) */
     uint32_t *fb = (uint32_t *)g_engine.framebuffer;
     uint32_t clear = (uint32_t)g_engine.clear_r | ((uint32_t)g_engine.clear_g << 8) |
                      ((uint32_t)g_engine.clear_b << 16) |
@@ -314,18 +339,23 @@ TEST(rasterize_zbuffer_occlusion) {
     s3d_init();
     s3d_frame_begin();
 
-    /* front triangle: red, at z=0 */
-    s3d_draw_triangle(0, 1, 0, 1, 0, 0, 1, -1, 0, 1, 0, 0, -1, -1, 0, 1, 0, 0);
+    /* front object: red, at z=0 */
+    int m1 = make_test_tri_mesh(0, 1, 0, 1, -1, 0, -1, -1, 0);
+    int o1 = s3d_object_create(m1, -1);
+    s3d_object_color(o1, 1, 0, 0);
 
-    /* back triangle: blue, at z=-2 (farther), overlapping */
-    s3d_draw_triangle(0, 1, -2, 0, 0, 1, 1, -1, -2, 0, 0, 1, -1, -1, -2, 0, 0, 1);
+    /* back object: blue, at z=-2 */
+    int m2 = make_test_tri_mesh(0, 1, -2, 1, -1, -2, -1, -1, -2);
+    int o2 = s3d_object_create(m2, -1);
+    s3d_object_color(o2, 0, 0, 1);
 
-    /* center pixel should be red (front), not blue (back) */
+    s3d_render_scene();
+
     uint32_t *fb = (uint32_t *)g_engine.framebuffer;
     uint32_t center = fb[120 * S3D_WIDTH + 160];
     uint8_t r = center & 0xFF;
     uint8_t b = (center >> 16) & 0xFF;
-    ASSERT_TRUE(r > b); /* red channel should dominate */
+    ASSERT_TRUE(r > b);
 }
 
 /* ── main ────────────────────────────────────────────────────────────── */
