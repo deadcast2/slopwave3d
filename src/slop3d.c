@@ -356,7 +356,7 @@ static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1,
     uint32_t *fb = (uint32_t *)g_engine.framebuffer;
 
     for (int y = y_start; y <= y_end; y++) {
-        float fy = (float)y + 0.5f;
+        float fy = (float)y;
 
         /* long edge: v0 → v2 */
         float t_long = clampf((fy - v0.y) / total_h, 0.0f, 1.0f);
@@ -439,7 +439,7 @@ static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1,
             ix_end = S3D_WIDTH - 1;
 
         float span = xr - xl;
-        if (span < 0.001f)
+        if (span < 1e-6f)
             continue;
         float inv_span = 1.0f / span;
 
