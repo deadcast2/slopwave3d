@@ -13,11 +13,11 @@ typedef signed long int32_t;
 #define S3D_WIDTH 320
 #define S3D_HEIGHT 240
 
-#define S3D_MAX_TEXTURES  64
-#define S3D_MAX_MESHES    128
-#define S3D_MAX_VERTICES  32768
+#define S3D_MAX_TEXTURES 64
+#define S3D_MAX_MESHES 128
+#define S3D_MAX_VERTICES 32768
 #define S3D_MAX_TRIANGLES 65536
-#define S3D_MAX_TEX_SIZE  128
+#define S3D_MAX_TEX_SIZE 128
 
 typedef struct {
     float x, y, z;

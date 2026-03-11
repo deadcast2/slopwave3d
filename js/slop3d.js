@@ -72,11 +72,10 @@ class Slop3D {
             'number',
             ['number']
         );
-        this._meshLoadObj = this.module.cwrap(
-            's3d_mesh_load_obj',
+        this._meshLoadObj = this.module.cwrap('s3d_mesh_load_obj', 'number', [
             'number',
-            ['number', 'number']
-        );
+            'number',
+        ]);
         this._drawMesh = this.module.cwrap('s3d_draw_mesh', null, [
             'number',
             'number',
@@ -215,8 +214,11 @@ class Slop3D {
                 this._ftDisplay = this._fpsAccum / this._frameCount;
                 this._frameCount = 0;
                 this._fpsAccum = 0;
-                if (fpsEl) fpsEl.textContent = 'FPS: ' + this._fpsDisplay.toFixed(1);
-                if (ftEl) ftEl.textContent = 'Frame: ' + this._ftDisplay.toFixed(2) + ' ms';
+                if (fpsEl)
+                    fpsEl.textContent = 'FPS: ' + this._fpsDisplay.toFixed(1);
+                if (ftEl)
+                    ftEl.textContent =
+                        'Frame: ' + this._ftDisplay.toFixed(2) + ' ms';
             }
 
             this._frameBegin();

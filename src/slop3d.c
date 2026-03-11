@@ -422,13 +422,27 @@ static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1,
         float vl = lv, vr = sv;
         if (xl > xr) {
             float t;
-            t = xl;  xl = xr;  xr = t;
-            t = zl;  zl = zr;  zr = t;
-            t = rl;  rl = rr;  rr = t;
-            t = gl;  gl = gr;  gr = t;
-            t = bl;  bl = br;  br = t;
-            t = ul;  ul = ur;  ur = t;
-            t = vl;  vl = vr;  vr = t;
+            t = xl;
+            xl = xr;
+            xr = t;
+            t = zl;
+            zl = zr;
+            zr = t;
+            t = rl;
+            rl = rr;
+            rr = t;
+            t = gl;
+            gl = gr;
+            gr = t;
+            t = bl;
+            bl = br;
+            br = t;
+            t = ul;
+            ul = ur;
+            ur = t;
+            t = vl;
+            vl = vr;
+            vr = t;
         }
 
         int ix_start = (int)ceilf(xl);
@@ -632,15 +646,15 @@ void s3d_draw_triangle(float x0, float y0, float z0, float r0, float g0, float b
         float inv_w1 = 1.0f / b->clip.w;
         float inv_w2 = 1.0f / c->clip.w;
 
-        S3D_ScreenVert sv0 = ndc_to_screen(a->clip.x * inv_w0, a->clip.y * inv_w0,
-                                           a->clip.z * inv_w0, a->r, a->g, a->b,
-                                           a->u, a->v);
-        S3D_ScreenVert sv1 = ndc_to_screen(b->clip.x * inv_w1, b->clip.y * inv_w1,
-                                           b->clip.z * inv_w1, b->r, b->g, b->b,
-                                           b->u, b->v);
-        S3D_ScreenVert sv2 = ndc_to_screen(c->clip.x * inv_w2, c->clip.y * inv_w2,
-                                           c->clip.z * inv_w2, c->r, c->g, c->b,
-                                           c->u, c->v);
+        S3D_ScreenVert sv0 =
+            ndc_to_screen(a->clip.x * inv_w0, a->clip.y * inv_w0, a->clip.z * inv_w0,
+                          a->r, a->g, a->b, a->u, a->v);
+        S3D_ScreenVert sv1 =
+            ndc_to_screen(b->clip.x * inv_w1, b->clip.y * inv_w1, b->clip.z * inv_w1,
+                          b->r, b->g, b->b, b->u, b->v);
+        S3D_ScreenVert sv2 =
+            ndc_to_screen(c->clip.x * inv_w2, c->clip.y * inv_w2, c->clip.z * inv_w2,
+                          c->r, c->g, c->b, c->u, c->v);
 
         /* backface cull */
         if (!is_front_facing(sv0, sv1, sv2))
@@ -654,7 +668,8 @@ void s3d_draw_triangle(float x0, float y0, float z0, float r0, float g0, float b
 
 EMSCRIPTEN_KEEPALIVE
 int s3d_texture_create(int width, int height) {
-    if (width <= 0 || width > S3D_MAX_TEX_SIZE || height <= 0 || height > S3D_MAX_TEX_SIZE)
+    if (width <= 0 || width > S3D_MAX_TEX_SIZE || height <= 0 ||
+        height > S3D_MAX_TEX_SIZE)
         return -1;
     for (int i = 0; i < S3D_MAX_TEXTURES; i++) {
         if (!g_engine.textures[i].active) {
@@ -754,7 +769,8 @@ int s3d_mesh_load_obj(const char *obj_text, int len) {
                 positions[pos_count * 3 + 2] = z;
                 pos_count++;
             }
-        } else if (*p == 'v' && p + 1 < end && p[1] == 't' && p + 2 < end && p[2] == ' ') {
+        } else if (*p == 'v' && p + 1 < end && p[1] == 't' && p + 2 < end &&
+                   p[2] == ' ') {
             /* texcoord: vt u v */
             float u = 0, v = 0;
             p += 3;
@@ -765,7 +781,8 @@ int s3d_mesh_load_obj(const char *obj_text, int len) {
                 texcoords[tex_count * 2 + 1] = v;
                 tex_count++;
             }
-        } else if (*p == 'v' && p + 1 < end && p[1] == 'n' && p + 2 < end && p[2] == ' ') {
+        } else if (*p == 'v' && p + 1 < end && p[1] == 'n' && p + 2 < end &&
+                   p[2] == ' ') {
             /* normal: vn x y z */
             float x = 0, y = 0, z = 0;
             p += 3;
@@ -926,15 +943,15 @@ void s3d_draw_mesh(int mesh_id, int texture_id) {
             float inv_w1 = 1.0f / b->clip.w;
             float inv_w2 = 1.0f / c->clip.w;
 
-            S3D_ScreenVert sv0 = ndc_to_screen(a->clip.x * inv_w0, a->clip.y * inv_w0,
-                                               a->clip.z * inv_w0, a->r, a->g, a->b,
-                                               a->u, a->v);
-            S3D_ScreenVert sv1 = ndc_to_screen(b->clip.x * inv_w1, b->clip.y * inv_w1,
-                                               b->clip.z * inv_w1, b->r, b->g, b->b,
-                                               b->u, b->v);
-            S3D_ScreenVert sv2 = ndc_to_screen(c->clip.x * inv_w2, c->clip.y * inv_w2,
-                                               c->clip.z * inv_w2, c->r, c->g, c->b,
-                                               c->u, c->v);
+            S3D_ScreenVert sv0 =
+                ndc_to_screen(a->clip.x * inv_w0, a->clip.y * inv_w0, a->clip.z * inv_w0,
+                              a->r, a->g, a->b, a->u, a->v);
+            S3D_ScreenVert sv1 =
+                ndc_to_screen(b->clip.x * inv_w1, b->clip.y * inv_w1, b->clip.z * inv_w1,
+                              b->r, b->g, b->b, b->u, b->v);
+            S3D_ScreenVert sv2 =
+                ndc_to_screen(c->clip.x * inv_w2, c->clip.y * inv_w2, c->clip.z * inv_w2,
+                              c->r, c->g, c->b, c->u, c->v);
 
             if (!is_front_facing(sv0, sv1, sv2))
                 continue;
