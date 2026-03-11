@@ -4,14 +4,3 @@ web/slop3d_wasm.wasm
 
 # Test binaries
 tests/test_math
-
-# ActiveX build output
-activex/*.dll
-activex/*.obj
-activex/*.lib
-activex/*.exp
-activex/*.tlb
-activex/*.pdb
-activex/*.ilk
-activex/slop3d_i.h
-activex/slop3d_i.c

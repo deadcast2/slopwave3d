@@ -1,3 +1,0 @@
-@echo off
-echo Unregistering slop3d ActiveX Control...
-regsvr32 /u "%~dp0slop3d.dll"

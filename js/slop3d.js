@@ -195,7 +195,7 @@ class Slop3D {
 
         const fpsEl = document.getElementById('fps');
         const ftEl = document.getElementById('frametime');
-        const frameInterval = 1000 / 30; /* ~30fps, matches ActiveX SetTimer(33ms) */
+        const frameInterval = 1000 / 30; /* ~30fps */
         this._nextFrame = this._lastTime + frameInterval;
 
         const render = () => {
