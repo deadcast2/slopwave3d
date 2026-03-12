@@ -19,7 +19,7 @@ jobs:
       - uses: qwibitai/nanoclaw/repo-tokens@main
         id: tokens
         with:
-          include: 'src/**/*.c src/**/*.h js/**/*.js web/**/*.js web/**/*.html activex/**/*.cpp activex/**/*.h activex/**/*.def activex/**/*.bat activex/**/*.html Makefile'
+          include: 'src/**/*.c src/**/*.h js/**/*.js web/**/*.js web/**/*.html ide/**/*.js Makefile'
           context-window: 200000
           badge-path: '.github/badges/tokens.svg'
       - name: Commit if changed

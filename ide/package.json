@@ -1,0 +1,14 @@
+{
+  "name": "Slopwave3D",
+  "productName": "Slopwave3D",
+  "version": "0.1.0",
+  "description": "Live SlopScript editor for the slop3d engine",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "electron": "^33.0.0",
+    "monaco-editor": "^0.52.0"
+  }
+}

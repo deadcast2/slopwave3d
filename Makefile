@@ -64,4 +64,7 @@ fmt:
 	clang-format -i src/slop3d.c src/slop3d.h tests/test_math.c
 	prettier --write js/slop3d.js tests/test_slopscript.js
 
-.PHONY: all clean serve test fmt
+ide:
+	cd ide && npm install && npm start
+
+.PHONY: all clean serve test fmt ide

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>slop3d IDE</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="titlebar-spacer"></div>
+    <div id="app">
+        <div id="editor-pane"></div>
+        <div id="divider"></div>
+        <div id="preview-pane">
+            <div id="canvas-wrap">
+                <canvas id="game-canvas"></canvas>
+            </div>
+            <div id="error-banner" class="hidden">
+                <span id="error-message"></span>
+            </div>
+            <div id="status-bar">
+                <span id="status-text">Ready</span>
+            </div>
+        </div>
+    </div>
+
+    <script src="slopscript.js"></script>
+    <script src="../node_modules/monaco-editor/min/vs/loader.js"></script>
+    <script src="renderer.js"></script>
+</body>
+</html>
