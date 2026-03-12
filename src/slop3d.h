@@ -19,6 +19,7 @@ typedef signed long int32_t;
 #define S3D_MAX_TRIANGLES 65536
 #define S3D_MAX_TEX_SIZE 128
 #define S3D_MAX_OBJECTS 256
+#define S3D_MAX_LIGHTS 8
 
 typedef struct {
     float x, y, z;
@@ -46,6 +47,22 @@ static inline S3D_Vec4 s3d_vec4(float x, float y, float z, float w) {
     r.w = w;
     return r;
 }
+
+#define S3D_LIGHT_OFF 0
+#define S3D_LIGHT_AMBIENT 1
+#define S3D_LIGHT_DIRECTIONAL 2
+#define S3D_LIGHT_POINT 3
+#define S3D_LIGHT_SPOT 4
+
+typedef struct {
+    int type;
+    S3D_Vec3 color;
+    S3D_Vec3 position;
+    S3D_Vec3 direction;
+    float range;
+    float inner_angle;
+    float outer_angle;
+} S3D_Light;
 
 typedef struct {
     float x, y, z;
@@ -112,5 +129,12 @@ void s3d_object_color(int object_id, float r, float g, float b);
 void s3d_object_alpha(int object_id, float a);
 void s3d_object_active(int object_id, int active);
 void s3d_render_scene(void);
+
+void s3d_light_ambient(int light_id, float r, float g, float b);
+void s3d_light_directional(int light_id, float r, float g, float b, float dx, float dy, float dz);
+void s3d_light_point(int light_id, float r, float g, float b, float x, float y, float z, float range);
+void s3d_light_spot(int light_id, float r, float g, float b, float x, float y, float z, float dx, float dy, float dz,
+                    float range, float inner_deg, float outer_deg);
+void s3d_light_off(int light_id);
 
 #endif

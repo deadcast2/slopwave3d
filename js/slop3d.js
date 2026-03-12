@@ -42,6 +42,42 @@ class Slop3D {
         this._objectAlpha = this.module.cwrap('s3d_object_alpha', null, ['number', 'number']);
         this._objectActive = this.module.cwrap('s3d_object_active', null, ['number', 'number']);
         this._renderScene = this.module.cwrap('s3d_render_scene', null, []);
+        this._lightAmbient = this.module.cwrap('s3d_light_ambient', null, ['number', 'number', 'number', 'number']);
+        this._lightDirectional = this.module.cwrap('s3d_light_directional', null, [
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+        ]);
+        this._lightPoint = this.module.cwrap('s3d_light_point', null, [
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+        ]);
+        this._lightSpot = this.module.cwrap('s3d_light_spot', null, [
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+        ]);
+        this._lightOff = this.module.cwrap('s3d_light_off', null, ['number']);
 
         this._init();
 
@@ -136,6 +172,26 @@ class Slop3D {
 
     setObjectActive(id, active) {
         this._objectActive(id, active);
+    }
+
+    setLightAmbient(id, r, g, b) {
+        this._lightAmbient(id, r, g, b);
+    }
+
+    setLightDirectional(id, r, g, b, dx, dy, dz) {
+        this._lightDirectional(id, r, g, b, dx, dy, dz);
+    }
+
+    setLightPoint(id, r, g, b, x, y, z, range) {
+        this._lightPoint(id, r, g, b, x, y, z, range);
+    }
+
+    setLightSpot(id, r, g, b, x, y, z, dx, dy, dz, range, innerDeg, outerDeg) {
+        this._lightSpot(id, r, g, b, x, y, z, dx, dy, dz, range, innerDeg, outerDeg);
+    }
+
+    setLightOff(id) {
+        this._lightOff(id);
     }
 
     renderScene() {
@@ -372,6 +428,21 @@ class SlopRuntime {
         this._e.destroyObject(obj.id);
         const i = this._sceneObjects.indexOf(obj);
         if (i >= 0) this._sceneObjects.splice(i, 1);
+    }
+    light_ambient(id, r, g, b) {
+        this._e.setLightAmbient(id, r, g, b);
+    }
+    light_directional(id, r, g, b, dx, dy, dz) {
+        this._e.setLightDirectional(id, r, g, b, dx, dy, dz);
+    }
+    light_point(id, r, g, b, x, y, z, range) {
+        this._e.setLightPoint(id, r, g, b, x, y, z, range);
+    }
+    light_spot(id, r, g, b, x, y, z, dx, dy, dz, range, innerDeg, outerDeg) {
+        this._e.setLightSpot(id, r, g, b, x, y, z, dx, dy, dz, range, innerDeg, outerDeg);
+    }
+    light_off(id) {
+        this._e.setLightOff(id);
     }
     gotoScene(name) {
         for (const obj of this._sceneObjects) this._e.destroyObject(obj.id);
@@ -713,7 +784,13 @@ function slopParse(tokens) {
         // colon-style statement calls: goto:, destroy:, or ident:
         if (
             at(TK.IDENT) &&
-            (t.val === 'goto' || t.val === 'destroy') &&
+            (t.val === 'goto' ||
+                t.val === 'destroy' ||
+                t.val === 'light_ambient' ||
+                t.val === 'light_directional' ||
+                t.val === 'light_point' ||
+                t.val === 'light_spot' ||
+                t.val === 'light_off') &&
             tokens[pos + 1] &&
             tokens[pos + 1].type === TK.COLON
         )
@@ -1052,6 +1129,9 @@ function slopGenerate(ast) {
                     emit(`_rt.gotoScene('${node.args[0].name}'); return;`);
                 } else if (node.name === 'destroy') {
                     emit(`_rt.destroy(${emitExpr(node.args[0])});`);
+                } else if (node.name.startsWith('light_')) {
+                    const args = node.args.map(emitExpr).join(', ');
+                    emit(`_rt.${node.name}(${args});`);
                 } else {
                     const args = node.args.map(emitExpr).join(', ');
                     emit(`_s.${node.name}(${args});`);

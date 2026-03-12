@@ -207,6 +207,7 @@ typedef struct {
     S3D_Triangle triangle_pool[S3D_MAX_TRIANGLES];
     int triangle_pool_used;
     S3D_Object objects[S3D_MAX_OBJECTS];
+    S3D_Light lights[S3D_MAX_LIGHTS];
 } S3D_Engine;
 
 static S3D_Engine g_engine;
@@ -776,9 +777,68 @@ int s3d_mesh_load_obj(const char *obj_text, int len) {
     return mesh_id;
 }
 
+/* ── lighting ────────────────────────────────────────────────────────── */
+
+static inline float smoothstepf(float edge0, float edge1, float x) {
+    float t = clampf((x - edge0) / (edge1 - edge0 + 1e-8f), 0.0f, 1.0f);
+    return t * t * (3.0f - 2.0f * t);
+}
+
+static S3D_Vec3 compute_vertex_light(S3D_Vec3 world_pos, S3D_Vec3 world_normal, S3D_Vec3 base_color) {
+    S3D_Vec3 result = s3d_vec3(0.0f, 0.0f, 0.0f);
+    int any_light = 0;
+
+    for (int i = 0; i < S3D_MAX_LIGHTS; i++) {
+        S3D_Light *l = &g_engine.lights[i];
+        if (l->type == S3D_LIGHT_OFF) continue;
+        any_light = 1;
+
+        if (l->type == S3D_LIGHT_AMBIENT) {
+            result = v3_add(result, v3_scale(l->color, base_color));
+        } else if (l->type == S3D_LIGHT_DIRECTIONAL) {
+            float ndotl = v3_dot(world_normal, v3_negate(l->direction));
+            if (ndotl < 0.0f) ndotl = 0.0f;
+            result = v3_add(result, v3_mul(v3_scale(l->color, base_color), ndotl));
+        } else if (l->type == S3D_LIGHT_POINT) {
+            S3D_Vec3 to_light = v3_sub(l->position, world_pos);
+            float dist = v3_length(to_light);
+            float att = clampf(1.0f - dist / l->range, 0.0f, 1.0f);
+            if (att > 0.0f) {
+                S3D_Vec3 light_dir = v3_mul(to_light, 1.0f / (dist + 1e-8f));
+                float ndotl = v3_dot(world_normal, light_dir);
+                if (ndotl < 0.0f) ndotl = 0.0f;
+                result = v3_add(result, v3_mul(v3_scale(l->color, base_color), ndotl * att));
+            }
+        } else if (l->type == S3D_LIGHT_SPOT) {
+            S3D_Vec3 to_light = v3_sub(l->position, world_pos);
+            float dist = v3_length(to_light);
+            float att = clampf(1.0f - dist / l->range, 0.0f, 1.0f);
+            if (att > 0.0f) {
+                S3D_Vec3 light_dir = v3_mul(to_light, 1.0f / (dist + 1e-8f));
+                float ndotl = v3_dot(world_normal, light_dir);
+                if (ndotl < 0.0f) ndotl = 0.0f;
+                float cos_angle = v3_dot(v3_negate(l->direction), light_dir);
+                float cos_outer = cosf(deg_to_rad(l->outer_angle));
+                float cos_inner = cosf(deg_to_rad(l->inner_angle));
+                float spot = smoothstepf(cos_outer, cos_inner, cos_angle);
+                result = v3_add(result, v3_mul(v3_scale(l->color, base_color), ndotl * att * spot));
+            }
+        }
+    }
+
+    /* no lights active: pass through base color (backwards compatible) */
+    if (!any_light) return base_color;
+
+    result.x = clampf(result.x, 0.0f, 1.0f);
+    result.y = clampf(result.y, 0.0f, 1.0f);
+    result.z = clampf(result.z, 0.0f, 1.0f);
+    return result;
+}
+
 /* ── internal object drawing ─────────────────────────────────────────── */
 
-static void draw_object_internal(int mesh_id, int texture_id, S3D_Mat4 mvp, S3D_Vec3 color, float alpha) {
+static void draw_object_internal(int mesh_id, int texture_id, S3D_Mat4 mvp, S3D_Mat4 model, S3D_Vec3 color,
+                                 float alpha) {
     if (mesh_id < 0 || mesh_id >= S3D_MAX_MESHES || !g_engine.meshes[mesh_id].active) return;
 
     S3D_Mesh *mesh = &g_engine.meshes[mesh_id];
@@ -790,24 +850,23 @@ static void draw_object_internal(int mesh_id, int texture_id, S3D_Mat4 mvp, S3D_
         S3D_Vertex *v2 = &g_engine.vertex_pool[mesh->vertex_offset + tri->i2];
 
         S3D_ClipVert cv[3];
-        cv[0].clip = m4_mul_vec4(mvp, s3d_vec4(v0->x, v0->y, v0->z, 1.0f));
-        cv[0].r = color.x;
-        cv[0].g = color.y;
-        cv[0].b = color.z;
-        cv[0].u = v0->u;
-        cv[0].v = v0->v;
-        cv[1].clip = m4_mul_vec4(mvp, s3d_vec4(v1->x, v1->y, v1->z, 1.0f));
-        cv[1].r = color.x;
-        cv[1].g = color.y;
-        cv[1].b = color.z;
-        cv[1].u = v1->u;
-        cv[1].v = v1->v;
-        cv[2].clip = m4_mul_vec4(mvp, s3d_vec4(v2->x, v2->y, v2->z, 1.0f));
-        cv[2].r = color.x;
-        cv[2].g = color.y;
-        cv[2].b = color.z;
-        cv[2].u = v2->u;
-        cv[2].v = v2->v;
+        S3D_Vertex *verts[3] = {v0, v1, v2};
+        for (int i = 0; i < 3; i++) {
+            S3D_Vertex *v = verts[i];
+            cv[i].clip = m4_mul_vec4(mvp, s3d_vec4(v->x, v->y, v->z, 1.0f));
+            cv[i].u = v->u;
+            cv[i].v = v->v;
+
+            S3D_Vec4 wp = m4_mul_vec4(model, s3d_vec4(v->x, v->y, v->z, 1.0f));
+            S3D_Vec4 wn = m4_mul_vec4(model, s3d_vec4(v->nx, v->ny, v->nz, 0.0f));
+            S3D_Vec3 world_pos = s3d_vec3(wp.x, wp.y, wp.z);
+            S3D_Vec3 world_normal = v3_normalize(s3d_vec3(wn.x, wn.y, wn.z));
+
+            S3D_Vec3 lit = compute_vertex_light(world_pos, world_normal, color);
+            cv[i].r = lit.x;
+            cv[i].g = lit.y;
+            cv[i].b = lit.z;
+        }
 
         S3D_ClipVert clipped[7];
         int n = clip_near_plane(cv, 3, clipped);
@@ -912,6 +971,55 @@ void s3d_object_active(int object_id, int active) {
     g_engine.objects[object_id].active = active;
 }
 
+/* ── light API ───────────────────────────────────────────────────────── */
+
+EMSCRIPTEN_KEEPALIVE
+void s3d_light_ambient(int light_id, float r, float g, float b) {
+    if (light_id < 0 || light_id >= S3D_MAX_LIGHTS) return;
+    S3D_Light *l = &g_engine.lights[light_id];
+    l->type = S3D_LIGHT_AMBIENT;
+    l->color = s3d_vec3(r, g, b);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void s3d_light_directional(int light_id, float r, float g, float b, float dx, float dy, float dz) {
+    if (light_id < 0 || light_id >= S3D_MAX_LIGHTS) return;
+    S3D_Light *l = &g_engine.lights[light_id];
+    l->type = S3D_LIGHT_DIRECTIONAL;
+    l->color = s3d_vec3(r, g, b);
+    l->direction = v3_normalize(s3d_vec3(dx, dy, dz));
+}
+
+EMSCRIPTEN_KEEPALIVE
+void s3d_light_point(int light_id, float r, float g, float b, float x, float y, float z, float range) {
+    if (light_id < 0 || light_id >= S3D_MAX_LIGHTS) return;
+    S3D_Light *l = &g_engine.lights[light_id];
+    l->type = S3D_LIGHT_POINT;
+    l->color = s3d_vec3(r, g, b);
+    l->position = s3d_vec3(x, y, z);
+    l->range = range;
+}
+
+EMSCRIPTEN_KEEPALIVE
+void s3d_light_spot(int light_id, float r, float g, float b, float x, float y, float z, float dx, float dy, float dz,
+                    float range, float inner_deg, float outer_deg) {
+    if (light_id < 0 || light_id >= S3D_MAX_LIGHTS) return;
+    S3D_Light *l = &g_engine.lights[light_id];
+    l->type = S3D_LIGHT_SPOT;
+    l->color = s3d_vec3(r, g, b);
+    l->position = s3d_vec3(x, y, z);
+    l->direction = v3_normalize(s3d_vec3(dx, dy, dz));
+    l->range = range;
+    l->inner_angle = inner_deg;
+    l->outer_angle = outer_deg;
+}
+
+EMSCRIPTEN_KEEPALIVE
+void s3d_light_off(int light_id) {
+    if (light_id < 0 || light_id >= S3D_MAX_LIGHTS) return;
+    g_engine.lights[light_id].type = S3D_LIGHT_OFF;
+}
+
 /* ── scene rendering ────────────────────────────────────────────────── */
 
 EMSCRIPTEN_KEEPALIVE
@@ -943,7 +1051,7 @@ void s3d_render_scene(void) {
     for (int i = 0; i < opaque_count; i++) {
         S3D_Object *obj = &g_engine.objects[opaque[i]];
         S3D_Mat4 mvp = m4_multiply(vp, obj->model);
-        draw_object_internal(obj->mesh_id, obj->texture_id, mvp, obj->color, obj->alpha);
+        draw_object_internal(obj->mesh_id, obj->texture_id, mvp, obj->model, obj->color, obj->alpha);
     }
 
     /* sort transparent objects back-to-front (insertion sort) */
@@ -964,6 +1072,6 @@ void s3d_render_scene(void) {
     for (int i = 0; i < transparent_count; i++) {
         S3D_Object *obj = &g_engine.objects[transparent[i]];
         S3D_Mat4 mvp = m4_multiply(vp, obj->model);
-        draw_object_internal(obj->mesh_id, obj->texture_id, mvp, obj->color, obj->alpha);
+        draw_object_internal(obj->mesh_id, obj->texture_id, mvp, obj->model, obj->color, obj->alpha);
     }
 }
