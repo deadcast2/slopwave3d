@@ -6,23 +6,23 @@
 
 static int g_pass = 0, g_fail = 0;
 
-#define ASSERT_TRUE(expr)                                                                \
-    do {                                                                                 \
-        if (expr) {                                                                      \
-            g_pass++;                                                                    \
-        } else {                                                                         \
-            g_fail++;                                                                    \
-            printf("  FAIL %s:%d: %s\n", __FILE__, __LINE__, #expr);                     \
-        }                                                                                \
+#define ASSERT_TRUE(expr)                                                                                              \
+    do {                                                                                                               \
+        if (expr) {                                                                                                    \
+            g_pass++;                                                                                                  \
+        } else {                                                                                                       \
+            g_fail++;                                                                                                  \
+            printf("  FAIL %s:%d: %s\n", __FILE__, __LINE__, #expr);                                                   \
+        }                                                                                                              \
     } while (0)
 
 #define ASSERT_NEAR(a, b, eps) ASSERT_TRUE(fabsf((a) - (b)) < (eps))
 
 #define TEST(name) static void test_##name(void)
-#define RUN(name)                                                                        \
-    do {                                                                                 \
-        printf("  %s\n", #name);                                                         \
-        test_##name();                                                                   \
+#define RUN(name)                                                                                                      \
+    do {                                                                                                               \
+        printf("  %s\n", #name);                                                                                       \
+        test_##name();                                                                                                 \
     } while (0)
 
 static int v3_near(S3D_Vec3 a, S3D_Vec3 b, float eps) {
@@ -30,8 +30,7 @@ static int v3_near(S3D_Vec3 a, S3D_Vec3 b, float eps) {
 }
 
 static int v4_near(S3D_Vec4 a, S3D_Vec4 b, float eps) {
-    return fabsf(a.x - b.x) < eps && fabsf(a.y - b.y) < eps && fabsf(a.z - b.z) < eps &&
-           fabsf(a.w - b.w) < eps;
+    return fabsf(a.x - b.x) < eps && fabsf(a.y - b.y) < eps && fabsf(a.z - b.z) < eps && fabsf(a.w - b.w) < eps;
 }
 
 /* ── vec3 tests ──────────────────────────────────────────────────────── */
@@ -61,9 +60,7 @@ TEST(v3_cross) {
     ASSERT_TRUE(v3_near(r, (S3D_Vec3){0, 0, 1}, 1e-6f));
 }
 
-TEST(v3_length) {
-    ASSERT_NEAR(v3_length((S3D_Vec3){3, 4, 0}), 5.0f, 1e-6f);
-}
+TEST(v3_length) { ASSERT_NEAR(v3_length((S3D_Vec3){3, 4, 0}), 5.0f, 1e-6f); }
 
 TEST(v3_normalize) {
     S3D_Vec3 r = v3_normalize((S3D_Vec3){0, 0, 5});
@@ -94,8 +91,7 @@ TEST(m4_identity_multiply) {
     S3D_Mat4 id = m4_identity();
     S3D_Mat4 a = m4_translate(1, 2, 3);
     S3D_Mat4 r = m4_multiply(id, a);
-    for (int i = 0; i < 16; i++)
-        ASSERT_NEAR(r.m[i], a.m[i], 1e-6f);
+    for (int i = 0; i < 16; i++) ASSERT_NEAR(r.m[i], a.m[i], 1e-6f);
 }
 
 TEST(m4_translate) {
@@ -133,8 +129,7 @@ TEST(m4_inverse_affine) {
     S3D_Mat4 inv = m4_inverse_affine(t);
     S3D_Mat4 result = m4_multiply(t, inv);
     S3D_Mat4 id = m4_identity();
-    for (int i = 0; i < 16; i++)
-        ASSERT_NEAR(result.m[i], id.m[i], 1e-5f);
+    for (int i = 0; i < 16; i++) ASSERT_NEAR(result.m[i], id.m[i], 1e-5f);
 }
 
 TEST(m4_inverse_affine_rotation) {
@@ -144,8 +139,7 @@ TEST(m4_inverse_affine_rotation) {
     S3D_Mat4 inv = m4_inverse_affine(rt);
     S3D_Mat4 result = m4_multiply(rt, inv);
     S3D_Mat4 id = m4_identity();
-    for (int i = 0; i < 16; i++)
-        ASSERT_NEAR(result.m[i], id.m[i], 1e-4f);
+    for (int i = 0; i < 16; i++) ASSERT_NEAR(result.m[i], id.m[i], 1e-4f);
 }
 
 /* ── camera tests ────────────────────────────────────────────────────── */
@@ -295,26 +289,42 @@ TEST(clip_two_behind) {
 /* ── rasterizer integration tests ────────────────────────────────────── */
 
 /* helper: create a simple 1-triangle mesh for tests */
-static int make_test_tri_mesh(float x0, float y0, float z0,
-                              float x1, float y1, float z1,
-                              float x2, float y2, float z2) {
+static int make_test_tri_mesh(float x0, float y0, float z0, float x1, float y1, float z1, float x2, float y2,
+                              float z2) {
     int mid = s3d_mesh_create(3, 1);
     if (mid < 0) return -1;
     float *vp = s3d_mesh_get_vertex_ptr(mid);
     /* vertex 0 */
-    vp[0] = x0; vp[1] = y0; vp[2] = z0;
-    vp[3] = 0; vp[4] = 0; vp[5] = 1; /* normal */
-    vp[6] = 0; vp[7] = 0;             /* uv */
+    vp[0] = x0;
+    vp[1] = y0;
+    vp[2] = z0;
+    vp[3] = 0;
+    vp[4] = 0;
+    vp[5] = 1; /* normal */
+    vp[6] = 0;
+    vp[7] = 0; /* uv */
     /* vertex 1 */
-    vp[8] = x1; vp[9] = y1; vp[10] = z1;
-    vp[11] = 0; vp[12] = 0; vp[13] = 1;
-    vp[14] = 0; vp[15] = 0;
+    vp[8] = x1;
+    vp[9] = y1;
+    vp[10] = z1;
+    vp[11] = 0;
+    vp[12] = 0;
+    vp[13] = 1;
+    vp[14] = 0;
+    vp[15] = 0;
     /* vertex 2 */
-    vp[16] = x2; vp[17] = y2; vp[18] = z2;
-    vp[19] = 0; vp[20] = 0; vp[21] = 1;
-    vp[22] = 0; vp[23] = 0;
+    vp[16] = x2;
+    vp[17] = y2;
+    vp[18] = z2;
+    vp[19] = 0;
+    vp[20] = 0;
+    vp[21] = 1;
+    vp[22] = 0;
+    vp[23] = 0;
     uint16_t *ip = s3d_mesh_get_index_ptr(mid);
-    ip[0] = 0; ip[1] = 1; ip[2] = 2;
+    ip[0] = 0;
+    ip[1] = 1;
+    ip[2] = 2;
     return mid;
 }
 
@@ -329,8 +339,7 @@ TEST(rasterize_fills_pixels) {
 
     uint32_t *fb = (uint32_t *)g_engine.framebuffer;
     uint32_t clear = (uint32_t)g_engine.clear_r | ((uint32_t)g_engine.clear_g << 8) |
-                     ((uint32_t)g_engine.clear_b << 16) |
-                     ((uint32_t)g_engine.clear_a << 24);
+                     ((uint32_t)g_engine.clear_b << 16) | ((uint32_t)g_engine.clear_a << 24);
     uint32_t center = fb[120 * S3D_WIDTH + 160];
     ASSERT_TRUE(center != clear);
 }

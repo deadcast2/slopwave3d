@@ -49,6 +49,7 @@ $(OUT): $(SRC) src/slop3d.h
 
 test: tests/test_math
 	./tests/test_math
+	node --test tests/test_slopscript.js
 
 tests/test_math: tests/test_math.c $(SRC) src/slop3d.h
 	cc -o $@ $< -I src -lm -Wall -Wextra -Wno-unused-function
@@ -61,6 +62,6 @@ serve: all
 
 fmt:
 	clang-format -i src/slop3d.c src/slop3d.h tests/test_math.c
-	prettier --write js/slop3d.js web/demo.js
+	prettier --write js/slop3d.js tests/test_slopscript.js
 
 .PHONY: all clean serve test fmt

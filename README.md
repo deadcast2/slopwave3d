@@ -29,18 +29,18 @@ Remember Shockwave 3D? LEGO Backlot? Those weird browser games that ran in a 400
 ## Architecture
 
 ```
-┌─────────────────────┐
-│  Your Game (JS)     │
-├─────────────────────┤
-│  slop3d.js (JS API) │
-├─────────────────────┤
-│  WASM (Emscripten)  │
-├─────────────────────┤
-│  slop3d.c (C Core)  │
-└─────────────────────┘
+┌─────────────────────────┐
+│  Your Game (SlopScript)  │
+├─────────────────────────┤
+│  slop3d.js (API + DSL)  │
+├─────────────────────────┤
+│  WASM (Emscripten)      │
+├─────────────────────────┤
+│  slop3d.c (C Core)      │
+└─────────────────────────┘
 ```
 
-This mirrors how Shockwave 3D actually worked: a compiled engine (Intel's Internet 3D Graphics software, internally known as the IFX Toolkit) with a scripting layer on top (Lingo). Here, C is the engine and JavaScript is the scripting language.
+This mirrors how Shockwave 3D actually worked: a compiled engine (Intel's Internet 3D Graphics software, internally known as the IFX Toolkit) with a scripting layer on top (Lingo). Here, C is the engine and SlopScript is the scripting language — a purpose-built DSL that transpiles to JS in the browser.
 
 ## Specs
 
@@ -57,7 +57,7 @@ This mirrors how Shockwave 3D actually worked: a compiled engine (Intel's Intern
 | Max Meshes | 128 |
 | Max Objects | 256 |
 | Poly Budget | ~10,000 per scene |
-| Total Engine Size | ~2,700 lines |
+| Total Engine Size | ~2,700 lines (C) + ~1,200 lines (JS + SlopScript) |
 
 ## Build
 
@@ -68,7 +68,7 @@ This mirrors how Shockwave 3D actually worked: a compiled engine (Intel's Intern
 ```bash
 make          # Build WASM output (web/slop3d_wasm.js + .wasm)
 make serve    # Build + start local server on http://localhost:8080
-make test     # Build and run C unit tests natively
+make test     # Run C + JS unit tests
 make fmt      # Auto-format C (clang-format) and JS (prettier)
 make clean    # Remove all build outputs
 ```
@@ -77,26 +77,42 @@ After building, open `http://localhost:8080/web/index.html` in a browser.
 
 ## Quick Start
 
-```javascript
-const engine = new Slop3D('game-canvas');
-await engine.init();
+Games are written in **SlopScript**, a minimal DSL with no boilerplate:
 
-const tex = await engine.loadTexture('crate.jpg');
-const mesh = await engine.loadOBJ('cube.obj');
-const obj = engine.createObject(mesh, tex);
-
-engine.setCamera([0, 2, -5], [0, 0, 0], [0, 1, 0]);
-engine.setDirectionalLight(0, [1, -1, 0.5], [1, 1, 1]);
-engine.setFog(true, [0.2, 0.2, 0.3], 5, 20);
-
-let angle = 0;
-engine.onUpdate((dt) => {
-    angle += dt;
-    engine.setRotation(obj, 0, angle, 0);
-});
-
-engine.start();
 ```
+assets
+    model cube = cube.obj
+    skin crate = crate.jpg
+
+scene main
+    box = spawn: cube, crate
+    camera.position = 0, 1.5, 5
+
+    update
+        box.rotation.y = t * 30
+```
+
+Load it in HTML with a single script tag:
+
+```html
+<script src="slop3d_wasm.js"></script>
+<script src="slop3d.js"></script>
+<script type="text/slopscript" src="demo.slop"></script>
+```
+
+Or write inline — no build step, no bundler, no quotes, no semicolons, no parentheses.
+
+### SlopScript Features
+
+- **Indentation-based** syntax, no braces or semicolons
+- **No parentheses** — `sin[t]` for calls, `[a + b]` for grouping
+- **Reactive properties** — `box.rotation.y = t * 30` directly drives the engine
+- **Degree-based trig** — `sin[]`, `cos[]`, `tan[]` all take degrees
+- **Named scenes** with `goto:` for transitions and auto-cleanup
+- **Built-in `t`** (elapsed seconds) and **`dt`** (delta time)
+- Control flow: `if`/`elif`/`else`, `while`, `for/in`, `fn`, `return`
+
+You can also use the JS API directly if you prefer — see [`js/slop3d.js`](js/slop3d.js) for the `Slop3D` class.
 
 ## Why?
 

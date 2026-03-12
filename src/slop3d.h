@@ -91,8 +91,7 @@ uint8_t *s3d_get_framebuffer(void);
 int s3d_get_width(void);
 int s3d_get_height(void);
 
-void s3d_camera_set(float px, float py, float pz, float tx, float ty, float tz, float ux,
-                    float uy, float uz);
+void s3d_camera_set(float px, float py, float pz, float tx, float ty, float tz, float ux, float uy, float uz);
 void s3d_camera_fov(float fov_degrees);
 void s3d_camera_clip(float near_clip, float far_clip);
 
