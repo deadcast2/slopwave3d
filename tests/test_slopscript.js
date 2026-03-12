@@ -12,11 +12,12 @@ const stripped = src
     .replace(/class SlopScript \{[\s\S]*?^\}/m, '');
 const mod = new Function(
     stripped +
-        '\nreturn { SlopVec3, SlopObject, SlopCamera, SlopRuntime, slopLex, slopParse, slopGenerate, _sin, _cos, _tan, _lerp, _clamp, _random, _abs, _min, _max, _range };'
+        '\nreturn { SlopVec3, SlopObject, SlopLight, SlopCamera, SlopRuntime, slopLex, slopParse, slopGenerate, _sin, _cos, _tan, _lerp, _clamp, _random, _abs, _min, _max, _range };'
 );
 const {
     SlopVec3,
     SlopObject,
+    SlopLight,
     SlopCamera,
     SlopRuntime,
     slopLex,
@@ -240,6 +241,52 @@ describe('Parser', () => {
         assert.equal(cond.type, 'Unary');
         assert.equal(cond.op, 'not');
     });
+
+    it('parses ambient light assignment', () => {
+        const ast = parse('scene main\n    fill = ambient: 0.3, 0.3, 0.3\n');
+        const stmt = ast.scenes[0].body[0];
+        assert.equal(stmt.type, 'LightAssign');
+        assert.equal(stmt.lightType, 'ambient');
+        assert.equal(stmt.args.length, 3);
+    });
+
+    it('parses directional light assignment', () => {
+        const ast = parse('scene main\n    sun = directional: 1, 0.9, 0.8, -1, -1, -1\n');
+        const stmt = ast.scenes[0].body[0];
+        assert.equal(stmt.type, 'LightAssign');
+        assert.equal(stmt.lightType, 'directional');
+        assert.equal(stmt.args.length, 6);
+    });
+
+    it('parses point light assignment', () => {
+        const ast = parse('scene main\n    glow = point: 1, 1, 1, 0, 5, 0, 10\n');
+        const stmt = ast.scenes[0].body[0];
+        assert.equal(stmt.type, 'LightAssign');
+        assert.equal(stmt.lightType, 'point');
+        assert.equal(stmt.args.length, 7);
+    });
+
+    it('parses spot light assignment', () => {
+        const ast = parse('scene main\n    beam = spot: 1, 1, 1, 0, 5, 0, 0, -1, 0, 20, 15, 30\n');
+        const stmt = ast.scenes[0].body[0];
+        assert.equal(stmt.type, 'LightAssign');
+        assert.equal(stmt.lightType, 'spot');
+        assert.equal(stmt.args.length, 12);
+    });
+
+    it('parses off statement', () => {
+        const ast = parse('scene main\n    update\n        off: sun\n');
+        const stmt = ast.scenes[0].update[0];
+        assert.equal(stmt.type, 'CallStmt');
+        assert.equal(stmt.name, 'off');
+    });
+
+    it('parses on statement', () => {
+        const ast = parse('scene main\n    update\n        on: sun\n');
+        const stmt = ast.scenes[0].update[0];
+        assert.equal(stmt.type, 'CallStmt');
+        assert.equal(stmt.name, 'on');
+    });
 });
 
 // --- Code Generator Tests ---
@@ -332,6 +379,31 @@ describe('CodeGen', () => {
         assert.ok(js.includes("_rt._firstScene = 'menu'"));
     });
 
+    it('generates ambient light creation', () => {
+        const js = gen('scene main\n    fill = ambient: 0.3, 0.3, 0.3\n');
+        assert.ok(js.includes("_rt.light('ambient', 0.3, 0.3, 0.3)"));
+    });
+
+    it('generates directional light creation', () => {
+        const js = gen('scene main\n    sun = directional: 1, 0.9, 0.8, -1, -1, -1\n');
+        assert.ok(js.includes("_rt.light('directional', 1, 0.9, 0.8, (-1), (-1), (-1))"));
+    });
+
+    it('generates point light creation', () => {
+        const js = gen('scene main\n    glow = point: 1, 1, 1, 0, 5, 0, 10\n');
+        assert.ok(js.includes("_rt.light('point', 1, 1, 1, 0, 5, 0, 10)"));
+    });
+
+    it('generates off call', () => {
+        const js = gen('scene main\n    update\n        off: sun\n');
+        assert.ok(js.includes('_rt.off(_s.sun)'));
+    });
+
+    it('generates on call', () => {
+        const js = gen('scene main\n    update\n        on: sun\n');
+        assert.ok(js.includes('_rt.on(_s.sun)'));
+    });
+
     it('full spinning cube generates valid structure', () => {
         const js = gen(
             'assets\n    model cube = cube.obj\nscene main\n    box = spawn: cube\n    camera.position = 0, 1.5, 5\n    update\n        box.rotation.y = t * 30\n'
@@ -388,5 +460,63 @@ describe('Runtime helpers', () => {
     it('range generates array', () => {
         assert.deepEqual(_range(5), [0, 1, 2, 3, 4]);
         assert.deepEqual(_range(0), []);
+    });
+
+    it('SlopLight flushes on color change', () => {
+        let lastCall = null;
+        const fakeEngine = {
+            setLightAmbient: (id, r, g, b) => {
+                lastCall = { id, r, g, b };
+            },
+        };
+        const l = new SlopLight(fakeEngine, 0, 'ambient');
+        l.color.setAll(0.5, 0.6, 0.7);
+        assert.deepEqual(lastCall, { id: 0, r: 0.5, g: 0.6, b: 0.7 });
+    });
+
+    it('SlopLight flushes on position change for point light', () => {
+        let lastCall = null;
+        const fakeEngine = {
+            setLightPoint: (id, r, g, b, x, y, z, range) => {
+                lastCall = { id, x, y, z, range };
+            },
+        };
+        const l = new SlopLight(fakeEngine, 2, 'point');
+        l._range = 15;
+        l.position.setAll(1, 2, 3);
+        assert.equal(lastCall.id, 2);
+        assert.equal(lastCall.x, 1);
+        assert.equal(lastCall.y, 2);
+        assert.equal(lastCall.z, 3);
+        assert.equal(lastCall.range, 15);
+    });
+
+    it('SlopLight flushes on range setter', () => {
+        let callCount = 0;
+        const fakeEngine = {
+            setLightPoint: () => {
+                callCount++;
+            },
+        };
+        const l = new SlopLight(fakeEngine, 0, 'point');
+        callCount = 0;
+        l.range = 20;
+        assert.equal(l.range, 20);
+        assert.equal(callCount, 1);
+    });
+
+    it('SlopLight directional flushes with direction', () => {
+        let lastCall = null;
+        const fakeEngine = {
+            setLightDirectional: (id, r, g, b, dx, dy, dz) => {
+                lastCall = { id, r, g, b, dx, dy, dz };
+            },
+        };
+        const l = new SlopLight(fakeEngine, 1, 'directional');
+        l.direction.setAll(-1, -1, 0);
+        assert.equal(lastCall.id, 1);
+        assert.equal(lastCall.dx, -1);
+        assert.equal(lastCall.dy, -1);
+        assert.equal(lastCall.dz, 0);
     });
 });

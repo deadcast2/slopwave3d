@@ -43,9 +43,9 @@ assets
     skin crate = crate.jpg
 
 scene main
-    light_ambient: 0, 0.3, 0.3, 0.3
-    light_directional: 1, 1.0, 0.9, 0.8, -1, -1, -1
-    light_point: 2, 0.3, 0.6, 1.0, 3, 1, 0, 10
+    fill = ambient: 0.3, 0.3, 0.3
+    sun = directional: 1.0, 0.9, 0.8, -1, -1, -1
+    glow = point: 0.3, 0.6, 1.0, 3, 1, 0, 10
 
     box1 = spawn: cube, crate
 
@@ -65,7 +65,7 @@ scene main
         box1.rotation.y = t * 18
         box2.rotation = t * 12, 0, t * 24
         box3.rotation.y = t * -9
-        light_point: 2, 0.3, 0.6, 1.0, sin[t * 45] * 3, 1, cos[t * 45] * 3, 10
+        glow.position = sin[t * 45] * 3, 1, cos[t * 45] * 3
     </script>
 </body>
 </html>

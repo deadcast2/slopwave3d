@@ -85,6 +85,7 @@ assets
     skin crate = crate.jpg
 
 scene main
+    sun = directional: 1.0, 0.9, 0.8, -1, -1, -1
     box = spawn: cube, crate
     camera.position = 0, 1.5, 5
 
@@ -110,6 +111,9 @@ Or write inline — no build step, no bundler, no quotes, no semicolons, no pare
 - **Degree-based trig** — `sin[]`, `cos[]`, `tan[]` all take degrees
 - **Named scenes** with `goto:` for transitions and auto-cleanup
 - **Built-in `t`** (elapsed seconds) and **`dt`** (delta time)
+- **Lights as objects** — `sun = directional: r, g, b, dx, dy, dz` with reactive `.color`, `.position`, `.direction`, `.range`
+- **`off:`/`on:`** — toggle lights and objects: `off: sun`, `on: box`
+- **`kill:`** — destroy objects: `kill: box`
 - Control flow: `if`/`elif`/`else`, `while`, `for/in`, `fn`, `return`
 
 You can also use the JS API directly if you prefer — see [`js/slop3d.js`](js/slop3d.js) for the `Slop3D` class.

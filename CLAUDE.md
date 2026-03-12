@@ -99,6 +99,7 @@ assets
     skin crate = crate.jpg
 
 scene main
+    sun = directional: 1.0, 0.9, 0.8, -1, -1, -1
     box = spawn: cube, crate
     box.position = 2.5, 0, 0
     camera.position = 0, 1.5, 5
@@ -123,10 +124,20 @@ scene main
 - Control flow: `if`/`elif`/`else`, `while`, `for x in range[n]`, `fn name: args`, `return`
 - Boolean: `and`, `or`, `not`, `true`, `false`
 
+### Objects & Lights
+- `box = spawn: meshname, skinname` — create a scene object (reactive `.position`, `.rotation`, `.scale`, `.color`, `.alpha`)
+- `sun = ambient: r, g, b` — ambient light (reactive `.color`)
+- `sun = directional: r, g, b, dx, dy, dz` — directional light (reactive `.color`, `.direction`)
+- `glow = point: r, g, b, x, y, z, range` — point light (reactive `.color`, `.position`, `.range`)
+- `beam = spot: r, g, b, x, y, z, dx, dy, dz, range, inner, outer` — spot light (reactive `.color`, `.position`, `.direction`, `.range`, `.inner_angle`, `.outer_angle`)
+- `kill: obj` — destroy an object
+- `off: target` — turn off a light or deactivate an object
+- `on: target` — turn on a light or reactivate an object
+
 ### Structure
 - `assets` — global block, loaded once before any scene
 - `scene name` — named scene with setup code + nested `update` block
-- `goto: scenename` — switches scenes, auto-destroys current scene's objects
+- `goto: scenename` — switches scenes, auto-destroys current scene's objects and lights
 - First scene declared is active by default
 
 ### Transpiler Pipeline

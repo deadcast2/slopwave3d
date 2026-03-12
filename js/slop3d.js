@@ -365,6 +365,77 @@ class SlopObject {
     }
 }
 
+class SlopLight {
+    constructor(engine, id, type) {
+        this._e = engine;
+        this._id = id;
+        this._type = type;
+        this._range = 10;
+        this._innerAngle = 30;
+        this._outerAngle = 45;
+        this.color = new SlopVec3(() => this._flush(), 1, 1, 1);
+        this.position = new SlopVec3(() => this._flush());
+        this.direction = new SlopVec3(() => this._flush(), 0, -1, 0);
+    }
+    get id() {
+        return this._id;
+    }
+    get range() {
+        return this._range;
+    }
+    set range(v) {
+        this._range = v;
+        this._flush();
+    }
+    get inner_angle() {
+        return this._innerAngle;
+    }
+    set inner_angle(v) {
+        this._innerAngle = v;
+        this._flush();
+    }
+    get outer_angle() {
+        return this._outerAngle;
+    }
+    set outer_angle(v) {
+        this._outerAngle = v;
+        this._flush();
+    }
+    _flush() {
+        const c = this.color,
+            p = this.position,
+            d = this.direction;
+        switch (this._type) {
+            case 'ambient':
+                this._e.setLightAmbient(this._id, c._x, c._y, c._z);
+                break;
+            case 'directional':
+                this._e.setLightDirectional(this._id, c._x, c._y, c._z, d._x, d._y, d._z);
+                break;
+            case 'point':
+                this._e.setLightPoint(this._id, c._x, c._y, c._z, p._x, p._y, p._z, this._range);
+                break;
+            case 'spot':
+                this._e.setLightSpot(
+                    this._id,
+                    c._x,
+                    c._y,
+                    c._z,
+                    p._x,
+                    p._y,
+                    p._z,
+                    d._x,
+                    d._y,
+                    d._z,
+                    this._range,
+                    this._innerAngle,
+                    this._outerAngle
+                );
+                break;
+        }
+    }
+}
+
 class SlopCamera {
     constructor(engine) {
         this._e = engine;
@@ -410,6 +481,7 @@ class SlopRuntime {
         this.scenes = {};
         this._activeScene = null;
         this._sceneObjects = [];
+        this._sceneLights = [];
         this._scope = null;
         this.t = 0;
         this.dt = 0;
@@ -424,29 +496,68 @@ class SlopRuntime {
         this._sceneObjects.push(obj);
         return obj;
     }
-    destroy(obj) {
+    kill(obj) {
         this._e.destroyObject(obj.id);
         const i = this._sceneObjects.indexOf(obj);
         if (i >= 0) this._sceneObjects.splice(i, 1);
     }
-    light_ambient(id, r, g, b) {
-        this._e.setLightAmbient(id, r, g, b);
+    light(type, ...args) {
+        let id = -1;
+        for (let i = 0; i < 8; i++) {
+            if (!this._sceneLights[i]) {
+                id = i;
+                break;
+            }
+        }
+        if (id < 0) throw new Error('No free light slots');
+        const l = new SlopLight(this._e, id, type);
+        if (type === 'ambient') {
+            if (args.length >= 3) l.color.setAll(args[0], args[1], args[2]);
+        } else if (type === 'directional') {
+            if (args.length >= 3) l.color.setAll(args[0], args[1], args[2]);
+            if (args.length >= 6) l.direction.setAll(args[3], args[4], args[5]);
+        } else if (type === 'point') {
+            if (args.length >= 3) l.color.setAll(args[0], args[1], args[2]);
+            if (args.length >= 6) l.position.setAll(args[3], args[4], args[5]);
+            if (args.length >= 7) l._range = args[6];
+            l._flush();
+        } else if (type === 'spot') {
+            if (args.length >= 3) l.color.setAll(args[0], args[1], args[2]);
+            if (args.length >= 6) l.position.setAll(args[3], args[4], args[5]);
+            if (args.length >= 9) l.direction.setAll(args[6], args[7], args[8]);
+            if (args.length >= 10) l._range = args[9];
+            if (args.length >= 11) l._innerAngle = args[10];
+            if (args.length >= 12) l._outerAngle = args[11];
+            l._flush();
+        }
+        this._sceneLights[id] = l;
+        return l;
     }
-    light_directional(id, r, g, b, dx, dy, dz) {
-        this._e.setLightDirectional(id, r, g, b, dx, dy, dz);
+    off(target) {
+        if (target instanceof SlopLight) {
+            this._e.setLightOff(target.id);
+            this._sceneLights[target.id] = null;
+        } else if (target instanceof SlopObject) {
+            target.active = false;
+        }
     }
-    light_point(id, r, g, b, x, y, z, range) {
-        this._e.setLightPoint(id, r, g, b, x, y, z, range);
-    }
-    light_spot(id, r, g, b, x, y, z, dx, dy, dz, range, innerDeg, outerDeg) {
-        this._e.setLightSpot(id, r, g, b, x, y, z, dx, dy, dz, range, innerDeg, outerDeg);
-    }
-    light_off(id) {
-        this._e.setLightOff(id);
+    on(target) {
+        if (target instanceof SlopLight) {
+            this._sceneLights[target.id] = target;
+            target._flush();
+        } else if (target instanceof SlopObject) {
+            target.active = true;
+        }
     }
     gotoScene(name) {
         for (const obj of this._sceneObjects) this._e.destroyObject(obj.id);
         this._sceneObjects = [];
+        for (let i = 0; i < 8; i++) {
+            if (this._sceneLights[i]) {
+                this._e.setLightOff(i);
+                this._sceneLights[i] = null;
+            }
+        }
         this._activeScene = name;
         const scene = this.scenes[name];
         this._scope = scene.setup();
@@ -504,8 +615,14 @@ const KEYWORDS = new Set([
     'scene',
     'update',
     'spawn',
-    'destroy',
+    'kill',
     'goto',
+    'off',
+    'on',
+    'ambient',
+    'directional',
+    'point',
+    'spot',
     'if',
     'elif',
     'else',
@@ -784,13 +901,7 @@ function slopParse(tokens) {
         // colon-style statement calls: goto:, destroy:, or ident:
         if (
             at(TK.IDENT) &&
-            (t.val === 'goto' ||
-                t.val === 'destroy' ||
-                t.val === 'light_ambient' ||
-                t.val === 'light_directional' ||
-                t.val === 'light_point' ||
-                t.val === 'light_spot' ||
-                t.val === 'light_off') &&
+            (t.val === 'goto' || t.val === 'kill' || t.val === 'off' || t.val === 'on') &&
             tokens[pos + 1] &&
             tokens[pos + 1].type === TK.COLON
         )
@@ -838,6 +949,30 @@ function slopParse(tokens) {
                     skin,
                     line: ln,
                 };
+            }
+            // light creation: ambient:, directional:, point:, spot:
+            const LIGHT_TYPES = ['ambient', 'directional', 'point', 'spot'];
+            for (const lt of LIGHT_TYPES) {
+                if (at(TK.IDENT, lt)) {
+                    eat(TK.IDENT);
+                    eat(TK.COLON);
+                    const args = [];
+                    if (!at(TK.NEWLINE) && !at(TK.EOF)) {
+                        args.push(parseExpr());
+                        while (at(TK.COMMA)) {
+                            eat(TK.COMMA);
+                            args.push(parseExpr());
+                        }
+                    }
+                    if (at(TK.NEWLINE)) eat(TK.NEWLINE);
+                    return {
+                        type: 'LightAssign',
+                        target: left,
+                        lightType: lt,
+                        args,
+                        line: ln,
+                    };
+                }
             }
             const val = parseTupleOrExpr();
             return { type: 'Assign', target: left, value: val, line: ln };
@@ -1124,14 +1259,21 @@ function slopGenerate(ast) {
                 emit(`${tgt} = _rt.spawn(${args});`);
                 break;
             }
+            case 'LightAssign': {
+                const tgt = emitExpr(node.target);
+                const args = node.args.map(emitExpr).join(', ');
+                emit(`${tgt} = _rt.light('${node.lightType}', ${args});`);
+                break;
+            }
             case 'CallStmt':
                 if (node.name === 'goto') {
                     emit(`_rt.gotoScene('${node.args[0].name}'); return;`);
-                } else if (node.name === 'destroy') {
-                    emit(`_rt.destroy(${emitExpr(node.args[0])});`);
-                } else if (node.name.startsWith('light_')) {
-                    const args = node.args.map(emitExpr).join(', ');
-                    emit(`_rt.${node.name}(${args});`);
+                } else if (node.name === 'kill') {
+                    emit(`_rt.kill(${emitExpr(node.args[0])});`);
+                } else if (node.name === 'off') {
+                    emit(`_rt.off(${emitExpr(node.args[0])});`);
+                } else if (node.name === 'on') {
+                    emit(`_rt.on(${emitExpr(node.args[0])});`);
                 } else {
                     const args = node.args.map(emitExpr).join(', ');
                     emit(`_s.${node.name}(${args});`);
