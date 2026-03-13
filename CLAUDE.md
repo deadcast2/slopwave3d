@@ -133,6 +133,7 @@ scene main
 - `sun = directional: r, g, b, dx, dy, dz` — directional light (reactive `.color`, `.direction`)
 - `glow = point: r, g, b, x, y, z, range` — point light (reactive `.color`, `.position`, `.range`)
 - `beam = spot: r, g, b, x, y, z, dx, dy, dz, range, inner, outer` — spot light (reactive `.color`, `.position`, `.direction`, `.range`, `.inner_angle`, `.outer_angle`)
+- `sky: r, g, b` — set the background clear color (0–1 float values)
 - `kill: target` — destroy an object or camera
 - `off: target` — turn off a light, deactivate an object, or deactivate a camera
 - `on: target` — turn on a light, reactivate an object, or reactivate a camera

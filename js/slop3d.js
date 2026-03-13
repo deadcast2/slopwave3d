@@ -608,6 +608,9 @@ class SlopRuntime {
             target.active = true;
         }
     }
+    sky(r, g, b) {
+        this._e.setClearColor(Math.round(r * 255), Math.round(g * 255), Math.round(b * 255));
+    }
     gotoScene(name) {
         for (const obj of this._sceneObjects) this._e.destroyObject(obj.id);
         this._sceneObjects = [];
@@ -683,6 +686,7 @@ const KEYWORDS = new Set([
     'off',
     'on',
     'use',
+    'sky',
     'camera',
     'ambient',
     'directional',
@@ -966,7 +970,12 @@ function slopParse(tokens) {
         // colon-style statement calls: goto:, destroy:, or ident:
         if (
             at(TK.IDENT) &&
-            (t.val === 'goto' || t.val === 'kill' || t.val === 'off' || t.val === 'on' || t.val === 'use') &&
+            (t.val === 'goto' ||
+                t.val === 'kill' ||
+                t.val === 'off' ||
+                t.val === 'on' ||
+                t.val === 'use' ||
+                t.val === 'sky') &&
             tokens[pos + 1] &&
             tokens[pos + 1].type === TK.COLON
         )
@@ -1368,6 +1377,9 @@ function slopGenerate(ast) {
                     emit(`_rt.on(${emitExpr(node.args[0])});`);
                 } else if (node.name === 'use') {
                     emit(`_rt.use(${emitExpr(node.args[0])});`);
+                } else if (node.name === 'sky') {
+                    const args = node.args.map(emitExpr).join(', ');
+                    emit(`_rt.sky(${args});`);
                 } else {
                     const args = node.args.map(emitExpr).join(', ');
                     emit(`_s.${node.name}(${args});`);

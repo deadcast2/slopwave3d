@@ -287,6 +287,14 @@ describe('Parser', () => {
         assert.equal(stmt.type, 'CallStmt');
         assert.equal(stmt.name, 'on');
     });
+
+    it('parses sky statement', () => {
+        const ast = parse('scene main\n    sky: 0.2, 0.1, 0.3\n');
+        const stmt = ast.scenes[0].body[0];
+        assert.equal(stmt.type, 'CallStmt');
+        assert.equal(stmt.name, 'sky');
+        assert.equal(stmt.args.length, 3);
+    });
 });
 
 // --- Code Generator Tests ---
@@ -407,6 +415,11 @@ describe('CodeGen', () => {
     it('generates on call', () => {
         const js = gen('scene main\n    update\n        on: sun\n');
         assert.ok(js.includes('_rt.on(_s.sun)'));
+    });
+
+    it('generates sky call', () => {
+        const js = gen('scene main\n    sky: 0.2, 0.1, 0.3\n');
+        assert.ok(js.includes('_rt.sky(0.2, 0.1, 0.3)'));
     });
 
     it('full spinning cube generates valid structure', () => {
