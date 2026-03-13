@@ -9,18 +9,24 @@
 <body>
     <div id="titlebar-spacer"></div>
     <div id="app">
+        <div id="editor-bg"></div>
         <div id="editor-pane"></div>
-        <div id="divider"></div>
-        <div id="preview-pane">
-            <div id="canvas-wrap">
-                <canvas id="game-canvas"></canvas>
+        <div id="preview-float">
+            <div id="preview-body">
+                <div id="canvas-wrap">
+                    <canvas id="game-canvas"></canvas>
+                </div>
+                <div id="error-banner" class="hidden">
+                    <span id="error-message"></span>
+                </div>
+                <div id="status-bar">
+                    <span id="status-text">Ready</span>
+                </div>
             </div>
-            <div id="error-banner" class="hidden">
-                <span id="error-message"></span>
-            </div>
-            <div id="status-bar">
-                <span id="status-text">Ready</span>
-            </div>
+            <div class="preview-edge edge-top-left"></div>
+            <div class="preview-edge edge-top-right"></div>
+            <div class="preview-edge edge-bottom-left"></div>
+            <div class="preview-edge edge-bottom-right"></div>
         </div>
     </div>
 

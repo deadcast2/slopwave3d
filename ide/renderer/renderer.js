@@ -1,6 +1,7 @@
 // slop3d IDE — renderer process
 
 const DEBOUNCE_MS = 500;
+const DEFAULT_BG = '#000000';
 
 const DEFAULT_SOURCE = `assets
     model cube = cube.obj
@@ -18,10 +19,12 @@ scene main
 `;
 
 let editor = null;
+let monacoRef = null;
 let currentEngine = null;
 let reloadTimeout = null;
 let projectRoot = '';
 let assetBasePath = '';
+let lastBgHex = DEFAULT_BG;
 
 // --- Script loading ---
 
@@ -45,7 +48,6 @@ async function loadEngine() {
     await loadScript('file://' + projectRoot + '/js/slop3d.js');
 
     // Monkey-patch asset loading to resolve paths against the asset base
-    // instead of using a <base> tag (which breaks Monaco's URL resolution)
     const origLoadOBJ = Slop3D.prototype.loadOBJ;
     Slop3D.prototype.loadOBJ = function (url) {
         if (!url.startsWith('http') && !url.startsWith('file:') && !url.startsWith('/')) {
@@ -62,14 +64,46 @@ async function loadEngine() {
         return origLoadTexture.call(this, url);
     };
 
+    // Monkey-patch sky() to sync editor background color
+    const origSky = SlopRuntime.prototype.sky;
+    SlopRuntime.prototype.sky = function (r, g, b) {
+        origSky.call(this, r, g, b);
+        updateEditorBackground(r, g, b);
+    };
+
     setStatus('Engine loaded');
+}
+
+// --- Dynamic editor background ---
+
+function updateEditorBackground(r, g, b) {
+    const toHex = (v) => Math.round(Math.max(0, Math.min(1, v)) * 255)
+        .toString(16).padStart(2, '0');
+    const hex = '#' + toHex(r) + toHex(g) + toHex(b);
+
+    // Skip if color hasn't changed (avoids per-frame theme rebuilds)
+    if (hex === lastBgHex) return;
+    lastBgHex = hex;
+
+    // Update the background div (smooth CSS transition)
+    document.getElementById('editor-bg').style.backgroundColor = hex;
+    document.getElementById('titlebar-spacer').style.backgroundColor = hex;
+
+    // Update Monaco theme to match
+    if (monacoRef) {
+        defineSlopTheme(monacoRef, hex);
+        monacoRef.editor.setTheme('slop3d-dark');
+    }
+}
+
+function resetEditorBackground() {
+    updateEditorBackground(0, 0, 0); // engine default clear color
 }
 
 // --- Monaco setup ---
 
 function initMonaco() {
     return new Promise((resolve) => {
-        // Monaco workers need absolute paths in Electron
         const monacoBase = projectRoot + '/ide/node_modules/monaco-editor/min/';
         self.MonacoEnvironment = {
             getWorkerUrl: function () {
@@ -85,6 +119,7 @@ function initMonaco() {
         });
 
         require(['vs/editor/editor.main'], function (monaco) {
+            monacoRef = monaco;
             registerSlopScript(monaco);
 
             editor = monaco.editor.create(document.getElementById('editor-pane'), {
@@ -95,13 +130,16 @@ function initMonaco() {
                 fontFamily: "'SF Mono', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
                 lineHeight: 20,
                 minimap: { enabled: false },
-                lineNumbers: 'on',
+                lineNumbers: 'off',
+                glyphMargin: false,
+                folding: false,
                 renderWhitespace: 'selection',
                 tabSize: 4,
                 insertSpaces: true,
                 automaticLayout: true,
                 scrollBeyondLastLine: false,
                 padding: { top: 12, bottom: 12 },
+                lineDecorationsWidth: 24,
                 overviewRulerLanes: 0,
                 hideCursorInOverviewRuler: true,
                 scrollbar: {
@@ -109,13 +147,12 @@ function initMonaco() {
                     horizontalScrollbarSize: 8,
                 },
                 bracketPairColorization: { enabled: false },
-                guides: { indentation: true, bracketPairs: false },
+                guides: { indentation: false, bracketPairs: false },
                 smoothScrolling: true,
                 cursorBlinking: 'smooth',
                 cursorSmoothCaretAnimation: 'on',
             });
 
-            // Debounced live reload on edit
             editor.onDidChangeModelContent(() => {
                 window.slop3dIDE.setDirty(true);
                 scheduleReload();
@@ -129,8 +166,6 @@ function initMonaco() {
 // --- Live preview ---
 
 async function runScene(source) {
-    // Phase 1: try transpiling (fast, no side effects)
-    // On error, keep the previous scene running and show overlay
     let js;
     try {
         const tokens = slopLex(source);
@@ -141,23 +176,21 @@ async function runScene(source) {
         return;
     }
 
-    // Phase 2: transpile succeeded — spin up new engine, then swap
     hideError();
     setStatus('Loading scene...');
+    resetEditorBackground();
 
     try {
         const engine = new Slop3D('game-canvas');
         await engine.init();
         await SlopScript.exec(js, engine);
 
-        // New engine is running — now stop the old one
         if (currentEngine) {
             try { currentEngine.stop(); } catch (_) {}
         }
         currentEngine = engine;
         setStatus('Running');
     } catch (err) {
-        // Runtime error — keep previous scene running, show error on top
         showError('Runtime: ' + err.message);
     }
 }
@@ -188,40 +221,147 @@ function setStatus(msg) {
     document.getElementById('status-text').textContent = msg;
 }
 
-// --- Resizable divider ---
+// --- Floating preview panel ---
 
-function initDivider() {
-    const divider = document.getElementById('divider');
-    const editorPane = document.getElementById('editor-pane');
-    const previewPane = document.getElementById('preview-pane');
+function initFloatingPanel() {
+    const panel = document.getElementById('preview-float');
+    const edges = panel.querySelectorAll('.preview-edge');
+    const app = document.getElementById('app');
 
     let dragging = false;
+    let resizeEdge = null; // e.g. 'top-left', 'bottom', 'right'
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
+    let resizeStart = null; // { x, y, left, top, width, height }
+    let positionedByUser = false;
 
-    divider.addEventListener('mousedown', (e) => {
+    const MIN_W = 200;
+    const MIN_H = 150;
+
+    function switchToAbsolute() {
+        if (positionedByUser) return;
+        const rect = panel.getBoundingClientRect();
+        const appRect = app.getBoundingClientRect();
+        panel.style.top = (rect.top - appRect.top) + 'px';
+        panel.style.left = (rect.left - appRect.left) + 'px';
+        panel.style.bottom = 'auto';
+        panel.style.right = 'auto';
+        positionedByUser = true;
+    }
+
+    // --- Drag (whole panel surface, except edges) ---
+    panel.addEventListener('mousedown', (e) => {
+        if (e.target.classList.contains('preview-edge')) return;
         dragging = true;
-        divider.classList.add('dragging');
+        const rect = panel.getBoundingClientRect();
+        dragOffsetX = e.clientX - rect.left;
+        dragOffsetY = e.clientY - rect.top;
+        switchToAbsolute();
         e.preventDefault();
     });
 
+    // --- Resize from any edge/corner ---
+    edges.forEach((edge) => {
+        edge.addEventListener('mousedown', (e) => {
+            // Determine which edge from class name
+            const classes = edge.className;
+            if (classes.includes('edge-top-left')) resizeEdge = 'top-left';
+            else if (classes.includes('edge-top-right')) resizeEdge = 'top-right';
+            else if (classes.includes('edge-bottom-left')) resizeEdge = 'bottom-left';
+            else if (classes.includes('edge-bottom-right')) resizeEdge = 'bottom-right';
+
+            switchToAbsolute();
+            const rect = panel.getBoundingClientRect();
+            const appRect = app.getBoundingClientRect();
+            resizeStart = {
+                mouseX: e.clientX,
+                mouseY: e.clientY,
+                left: rect.left - appRect.left,
+                top: rect.top - appRect.top,
+                width: rect.width,
+                height: rect.height,
+            };
+            e.preventDefault();
+            e.stopPropagation();
+        });
+    });
+
     window.addEventListener('mousemove', (e) => {
-        if (!dragging) return;
-        const appRect = document.getElementById('app').getBoundingClientRect();
-        const x = e.clientX - appRect.left;
-        const dividerW = 3;
-        const minEditor = 300;
-        const minPreview = 360;
-        const maxEditor = appRect.width - dividerW - minPreview;
-        const clamped = Math.max(minEditor, Math.min(maxEditor, x));
-        editorPane.style.flex = 'none';
-        editorPane.style.width = clamped + 'px';
-        previewPane.style.width = (appRect.width - clamped - dividerW) + 'px';
+        if (dragging) {
+            const appRect = app.getBoundingClientRect();
+            let x = e.clientX - dragOffsetX - appRect.left;
+            let y = e.clientY - dragOffsetY - appRect.top;
+
+            x = Math.max(0, Math.min(appRect.width - panel.offsetWidth, x));
+            y = Math.max(0, Math.min(appRect.height - panel.offsetHeight, y));
+
+            panel.style.left = x + 'px';
+            panel.style.top = y + 'px';
+        } else if (resizeEdge && resizeStart) {
+            const dx = e.clientX - resizeStart.mouseX;
+            const dy = e.clientY - resizeStart.mouseY;
+            const appRect = app.getBoundingClientRect();
+            const ASPECT = 4 / 3;
+
+            let { left, top, width, height } = resizeStart;
+
+            // Determine new width from the dominant drag axis, derive height from 4:3 ratio
+            if (resizeEdge === 'bottom-right') {
+                width = Math.max(MIN_W, resizeStart.width + dx);
+                height = width / ASPECT;
+            } else if (resizeEdge === 'bottom-left') {
+                width = Math.max(MIN_W, resizeStart.width - dx);
+                height = width / ASPECT;
+                left = resizeStart.left + (resizeStart.width - width);
+            } else if (resizeEdge === 'top-right') {
+                width = Math.max(MIN_W, resizeStart.width + dx);
+                height = width / ASPECT;
+                top = resizeStart.top + (resizeStart.height - height);
+            } else if (resizeEdge === 'top-left') {
+                width = Math.max(MIN_W, resizeStart.width - dx);
+                height = width / ASPECT;
+                left = resizeStart.left + (resizeStart.width - width);
+                top = resizeStart.top + (resizeStart.height - height);
+            }
+
+            // Clamp to app bounds
+            left = Math.max(0, left);
+            top = Math.max(0, top);
+            if (left + width > appRect.width) {
+                width = appRect.width - left;
+                height = width / ASPECT;
+            }
+            if (top + height > appRect.height) {
+                height = appRect.height - top;
+                width = height * ASPECT;
+            }
+
+            panel.style.left = left + 'px';
+            panel.style.top = top + 'px';
+            panel.style.width = width + 'px';
+            panel.style.height = height + 'px';
+        }
     });
 
     window.addEventListener('mouseup', () => {
-        if (dragging) {
-            dragging = false;
-            divider.classList.remove('dragging');
-        }
+        dragging = false;
+        resizeEdge = null;
+        resizeStart = null;
+    });
+
+    // --- Keep panel in bounds on window resize ---
+    window.addEventListener('resize', () => {
+        if (!positionedByUser) return;
+        const appRect = app.getBoundingClientRect();
+        const panelRect = panel.getBoundingClientRect();
+        let x = panelRect.left - appRect.left;
+        let y = panelRect.top - appRect.top;
+
+        x = Math.max(0, Math.min(appRect.width - panel.offsetWidth, x));
+        y = Math.max(0, Math.min(appRect.height - panel.offsetHeight, y));
+
+        panel.style.left = x + 'px';
+        panel.style.top = y + 'px';
     });
 }
 
@@ -237,7 +377,6 @@ async function handleMenuAction(action) {
         case 'open': {
             const result = await window.slop3dIDE.openFile();
             if (result) {
-                // Update asset base to the file's directory
                 const dir = result.path.substring(0, result.path.lastIndexOf('/'));
                 assetBasePath = dir;
                 editor.setValue(result.content);
@@ -250,6 +389,11 @@ async function handleMenuAction(action) {
         case 'save-as':
             await window.slop3dIDE.saveFileAs(editor.getValue());
             break;
+        case 'toggle-preview': {
+            const panel = document.getElementById('preview-float');
+            panel.classList.toggle('collapsed');
+            break;
+        }
     }
 }
 
@@ -257,20 +401,16 @@ async function handleMenuAction(action) {
 
 async function init() {
     try {
-        // 1. Load Monaco first (before any URL shenanigans)
         setStatus('Loading editor...');
         projectRoot = await window.slop3dIDE.getProjectRoot();
         await initMonaco();
 
-        // 2. Load engine (monkey-patches asset loading for file:// paths)
         setStatus('Loading engine...');
         await loadEngine();
 
-        // 3. Set up UI
-        initDivider();
+        initFloatingPanel();
         window.slop3dIDE.onMenuAction(handleMenuAction);
 
-        // 4. Run initial scene
         runScene(DEFAULT_SOURCE);
     } catch (err) {
         setStatus('Failed: ' + err.message);

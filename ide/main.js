@@ -20,7 +20,7 @@ function createWindow() {
         height: 850,
         minWidth: 800,
         minHeight: 500,
-        backgroundColor: '#0d1117',
+        backgroundColor: '#000000',
         titleBarStyle: 'hiddenInset',
         trafficLightPosition: { x: 12, y: 12 },
         webPreferences: {
@@ -60,7 +60,15 @@ function buildMenu() {
         },
         {
             label: 'View',
-            submenu: [{ role: 'toggleDevTools' }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }],
+            submenu: [
+                { label: 'Toggle Preview', accelerator: 'CmdOrCtrl+P', click: () => mainWindow.webContents.send('menu-action', 'toggle-preview') },
+                { type: 'separator' },
+                { role: 'toggleDevTools' },
+                { type: 'separator' },
+                { role: 'resetZoom' },
+                { role: 'zoomIn' },
+                { role: 'zoomOut' },
+            ],
         },
     ];
     Menu.setApplicationMenu(Menu.buildFromTemplate(template));

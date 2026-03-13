@@ -7,7 +7,7 @@
 html, body {
     height: 100%;
     overflow: hidden;
-    background: #0d1117;
+    background: #000000;
     color: #c9d1d9;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
@@ -15,57 +15,103 @@ html, body {
 #titlebar-spacer {
     height: 38px;
     -webkit-app-region: drag;
-    background: #010409;
-    border-bottom: 1px solid #21262d;
+    background: transparent;
 }
 
 #app {
-    display: flex;
+    position: relative;
     height: calc(100vh - 38px);
 }
 
-/* --- Editor pane --- */
+/* --- Editor background (smooth sky color transitions) --- */
+
+#editor-bg {
+    position: absolute;
+    inset: 0;
+    background: #000000;
+    transition: background-color 0.5s ease;
+    z-index: 0;
+}
+
+/* --- Editor pane (fills entire app) --- */
 
 #editor-pane {
-    flex: 1;
-    min-width: 300px;
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+}
+
+/* --- Floating preview panel --- */
+
+#preview-float {
+    position: absolute;
+    bottom: 40px;
+    right: 24px;
+    width: 420px;
+    z-index: 100;
+    border-radius: 8px;
+    background: transparent;
+    overflow: visible;
+    display: flex;
+    flex-direction: column;
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+#preview-float::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    pointer-events: none;
+    z-index: 120;
+    transition: border-color 0.3s ease;
+}
+
+#preview-float:hover::after {
+    border-color: #ffffff25;
+}
+
+#preview-float:active {
+    cursor: grabbing;
+}
+
+#preview-float.collapsed #preview-body,
+#preview-float.collapsed .preview-edge {
+    display: none;
+}
+
+/* --- Resize edges --- */
+
+.preview-edge {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    z-index: 110;
+}
+
+.preview-edge.edge-top-left     { top: -4px; left: -4px; cursor: nwse-resize; }
+.preview-edge.edge-top-right    { top: -4px; right: -4px; cursor: nesw-resize; }
+.preview-edge.edge-bottom-left  { bottom: -4px; left: -4px; cursor: nesw-resize; }
+.preview-edge.edge-bottom-right { bottom: -4px; right: -4px; cursor: nwse-resize; }
+
+/* --- Preview body --- */
+
+#preview-body {
+    display: flex;
+    flex-direction: column;
     overflow: hidden;
 }
 
-/* --- Divider --- */
-
-#divider {
-    width: 3px;
-    flex-shrink: 0;
-    background: #21262d;
-    cursor: col-resize;
-    transition: background 0.15s;
-    z-index: 10;
-}
-
-#divider:hover,
-#divider.dragging {
-    background: #58a6ff;
-}
-
-/* --- Preview pane --- */
-
-#preview-pane {
-    width: 520px;
-    min-width: 340px;
-    display: flex;
-    flex-direction: column;
-    background: #010409;
-}
-
 #canvas-wrap {
-    flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
     position: relative;
     overflow: hidden;
-    padding: 16px;
+    padding: 0;
 }
 
 #game-canvas {
@@ -76,8 +122,6 @@ html, body {
     max-height: 100%;
     object-fit: contain;
     background: #000;
-    border: 1px solid #21262d;
-    border-radius: 4px;
 }
 
 /* --- Error banner --- */
@@ -85,7 +129,7 @@ html, body {
 #error-banner {
     background: #da36331a;
     border-top: 1px solid #da363366;
-    padding: 6px 12px;
+    padding: 6px 10px;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -120,17 +164,10 @@ html, body {
     text-overflow: ellipsis;
 }
 
-/* --- Status bar --- */
+/* --- Status bar (hidden, kept for JS status tracking) --- */
 
 #status-bar {
-    height: 28px;
-    background: #010409;
-    border-top: 1px solid #21262d;
-    display: flex;
-    align-items: center;
-    padding: 0 12px;
-    font-size: 11px;
-    color: #484f58;
+    display: none;
 }
 
 #status-text {
