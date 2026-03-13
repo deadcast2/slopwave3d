@@ -81,6 +81,14 @@ class Slop3D {
             'number',
         ]);
         this._lightOff = this.module.cwrap('s3d_light_off', null, ['number']);
+        this._fogSet = this.module.cwrap('s3d_fog_set', null, [
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+            'number',
+        ]);
 
         this._init();
 
@@ -89,6 +97,28 @@ class Slop3D {
         this.canvas.width = this.width;
         this.canvas.height = this.height;
         this.imageData = new ImageData(this.width, this.height);
+
+        this._keys = new Uint8Array(256);
+        this._mouseX = 0;
+        this._mouseY = 0;
+        this._mouseButtons = 0;
+        document.addEventListener('keydown', e => {
+            if (e.keyCode < 256) this._keys[e.keyCode] = 1;
+        });
+        document.addEventListener('keyup', e => {
+            if (e.keyCode < 256) this._keys[e.keyCode] = 0;
+        });
+        this.canvas.addEventListener('mousemove', e => {
+            const rect = this.canvas.getBoundingClientRect();
+            this._mouseX = Math.round(((e.clientX - rect.left) / rect.width) * this.width);
+            this._mouseY = Math.round(((e.clientY - rect.top) / rect.height) * this.height);
+        });
+        this.canvas.addEventListener('mousedown', e => {
+            this._mouseButtons |= 1 << e.button;
+        });
+        this.canvas.addEventListener('mouseup', e => {
+            this._mouseButtons &= ~(1 << e.button);
+        });
     }
 
     setClearColor(r, g, b, a = 255) {
@@ -217,6 +247,26 @@ class Slop3D {
         this._lightOff(id);
     }
 
+    setFog(enabled, r, g, b, start, end) {
+        this._fogSet(enabled ? 1 : 0, r, g, b, start, end);
+    }
+
+    isKeyDown(keyCode) {
+        return keyCode >= 0 && keyCode < 256 && this._keys[keyCode] === 1;
+    }
+
+    mouseX() {
+        return this._mouseX;
+    }
+
+    mouseY() {
+        return this._mouseY;
+    }
+
+    mouseButton(n) {
+        return (this._mouseButtons & (1 << n)) !== 0;
+    }
+
     renderScene() {
         this._renderScene();
     }
@@ -318,6 +368,62 @@ function _range(n) {
     const a = [];
     for (let i = 0; i < n; i++) a.push(i);
     return a;
+}
+
+const _KEY_MAP = {
+    left: 37,
+    right: 39,
+    up: 38,
+    down: 40,
+    space: 32,
+    enter: 13,
+    escape: 27,
+    tab: 9,
+    shift: 16,
+    ctrl: 17,
+    alt: 18,
+    a: 65,
+    b: 66,
+    c: 67,
+    d: 68,
+    e: 69,
+    f: 70,
+    g: 71,
+    h: 72,
+    i: 73,
+    j: 74,
+    k: 75,
+    l: 76,
+    m: 77,
+    n: 78,
+    o: 79,
+    p: 80,
+    q: 81,
+    r: 82,
+    s: 83,
+    t: 84,
+    u: 85,
+    v: 86,
+    w: 87,
+    x: 88,
+    y: 89,
+    z: 90,
+    0: 48,
+    1: 49,
+    2: 50,
+    3: 51,
+    4: 52,
+    5: 53,
+    6: 54,
+    7: 55,
+    8: 56,
+    9: 57,
+};
+let _key_down_engine = null;
+function _key_down(name) {
+    if (!_key_down_engine) return false;
+    const code = _KEY_MAP[name];
+    return code !== undefined && _key_down_engine.isKeyDown(code);
 }
 
 class SlopVec3 {
@@ -611,6 +717,21 @@ class SlopRuntime {
     sky(r, g, b) {
         this._e.setClearColor(Math.round(r * 255), Math.round(g * 255), Math.round(b * 255));
     }
+    fog(r, g, b, start, end) {
+        this._e.setFog(true, r, g, b, start, end);
+    }
+    get mouse_x() {
+        return this._e._mouseX;
+    }
+    get mouse_y() {
+        return this._e._mouseY;
+    }
+    get mouse_left() {
+        return this._e.mouseButton(0);
+    }
+    get mouse_right() {
+        return this._e.mouseButton(2);
+    }
     gotoScene(name) {
         for (const obj of this._sceneObjects) this._e.destroyObject(obj.id);
         this._sceneObjects = [];
@@ -687,6 +808,7 @@ const KEYWORDS = new Set([
     'on',
     'use',
     'sky',
+    'fog',
     'camera',
     'ambient',
     'directional',
@@ -975,7 +1097,8 @@ function slopParse(tokens) {
                 t.val === 'off' ||
                 t.val === 'on' ||
                 t.val === 'use' ||
-                t.val === 'sky') &&
+                t.val === 'sky' ||
+                t.val === 'fog') &&
             tokens[pos + 1] &&
             tokens[pos + 1].type === TK.COLON
         )
@@ -1276,8 +1399,8 @@ function slopParse(tokens) {
 
 // --- Phase 4: Code Generator ---
 
-const SLOP_BUILTINS = new Set(['t', 'dt']);
-const SLOP_MATH = new Set(['sin', 'cos', 'tan', 'lerp', 'clamp', 'random', 'abs', 'min', 'max', 'range']);
+const SLOP_BUILTINS = new Set(['t', 'dt', 'mouse_x', 'mouse_y', 'mouse_left', 'mouse_right']);
+const SLOP_MATH = new Set(['sin', 'cos', 'tan', 'lerp', 'clamp', 'random', 'abs', 'min', 'max', 'range', 'key_down']);
 
 function slopGenerate(ast) {
     const lines = [];
@@ -1380,6 +1503,9 @@ function slopGenerate(ast) {
                 } else if (node.name === 'sky') {
                     const args = node.args.map(emitExpr).join(', ');
                     emit(`_rt.sky(${args});`);
+                } else if (node.name === 'fog') {
+                    const args = node.args.map(emitExpr).join(', ');
+                    emit(`_rt.fog(${args});`);
                 } else {
                     const args = node.args.map(emitExpr).join(', ');
                     emit(`_s.${node.name}(${args});`);
@@ -1455,7 +1581,7 @@ function slopGenerate(ast) {
             case 'Bool':
                 return String(node.val);
             case 'Ident':
-                if (node.name === 't' || node.name === 'dt') return '_rt.' + node.name;
+                if (SLOP_BUILTINS.has(node.name)) return '_rt.' + node.name;
                 return '_s.' + node.name;
             case 'Dot':
                 return emitExpr(node.object) + '.' + node.property;
@@ -1466,6 +1592,10 @@ function slopGenerate(ast) {
             case 'Unary':
                 return node.op === 'not' ? `(!${emitExpr(node.operand)})` : `(-${emitExpr(node.operand)})`;
             case 'Call':
+                if (node.name === 'key_down') {
+                    const keyArgs = node.args.map(a => (a.type === 'Ident' ? `'${a.name}'` : emitExpr(a))).join(', ');
+                    return `_key_down(${keyArgs})`;
+                }
                 if (SLOP_MATH.has(node.name)) return `_${node.name}(${node.args.map(emitExpr).join(', ')})`;
                 return `_s.${node.name}(${node.args.map(emitExpr).join(', ')})`;
             case 'Group':
@@ -1479,12 +1609,7 @@ function slopGenerate(ast) {
 // --- Phase 5: Loader ---
 
 class SlopScript {
-    static async run(source, canvasId) {
-        const engine = new Slop3D(canvasId);
-        await engine.init();
-        const tokens = slopLex(source);
-        const ast = slopParse(tokens);
-        const js = slopGenerate(ast);
+    static async exec(js, engine) {
         const fn = new Function(
             '_e',
             '_rt',
@@ -1498,10 +1623,18 @@ class SlopScript {
             '_min',
             '_max',
             '_range',
+            '_key_down',
             'return (async function(){' + js + '})();'
         );
         const rt = new SlopRuntime(engine);
-        await fn(engine, rt, _sin, _cos, _tan, _lerp, _clamp, _random, _abs, _min, _max, _range);
+        _key_down_engine = engine;
+        await fn(engine, rt, _sin, _cos, _tan, _lerp, _clamp, _random, _abs, _min, _max, _range, _key_down);
+    }
+    static async run(source, canvasId) {
+        const engine = new Slop3D(canvasId);
+        await engine.init();
+        const js = slopGenerate(slopParse(slopLex(source)));
+        await SlopScript.exec(js, engine);
     }
     static async load(url, canvasId) {
         const r = await fetch(url);

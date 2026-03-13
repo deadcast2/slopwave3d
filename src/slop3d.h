@@ -90,6 +90,12 @@ typedef struct {
 } S3D_Texture;
 
 typedef struct {
+    int enabled;
+    float r, g, b;
+    float start, end;
+} S3D_Fog;
+
+typedef struct {
     int active;
     int mesh_id;
     int texture_id;
@@ -143,5 +149,6 @@ void s3d_light_point(int light_id, float r, float g, float b, float x, float y, 
 void s3d_light_spot(int light_id, float r, float g, float b, float x, float y, float z, float dx, float dy, float dz,
                     float range, float inner_deg, float outer_deg);
 void s3d_light_off(int light_id);
+void s3d_fog_set(int enabled, float r, float g, float b, float start, float end);
 
 #endif

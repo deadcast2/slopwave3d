@@ -219,7 +219,7 @@ TEST(camera_clip) {
 /* ── viewport transform tests ────────────────────────────────────────── */
 
 TEST(ndc_origin_to_screen_center) {
-    S3D_ScreenVert sv = ndc_to_screen(0.0f, 0.0f, 0.0f, 1.0f, 0.5f, 0.0f, 0.0f, 0.0f);
+    S3D_ScreenVert sv = ndc_to_screen(0.0f, 0.0f, 0.0f, 1.0f, 0.5f, 0.0f, 0.0f, 0.0f, 1.0f);
     ASSERT_NEAR(sv.x, 160.0f, 0.01f);
     ASSERT_NEAR(sv.y, 120.0f, 0.01f);
     ASSERT_NEAR(sv.z, 0.5f, 1e-6f);
@@ -230,13 +230,13 @@ TEST(ndc_origin_to_screen_center) {
 
 TEST(ndc_corners) {
     /* NDC (-1, -1) = bottom-left in NDC → screen bottom-left = (0, 240) */
-    S3D_ScreenVert bl = ndc_to_screen(-1.0f, -1.0f, -1.0f, 0, 0, 0, 0, 0);
+    S3D_ScreenVert bl = ndc_to_screen(-1.0f, -1.0f, -1.0f, 0, 0, 0, 0, 0, 1.0f);
     ASSERT_NEAR(bl.x, 0.0f, 0.01f);
     ASSERT_NEAR(bl.y, 240.0f, 0.01f);
     ASSERT_NEAR(bl.z, 0.0f, 1e-6f);
 
     /* NDC (1, 1) = top-right in NDC → screen top-right = (320, 0) */
-    S3D_ScreenVert tr = ndc_to_screen(1.0f, 1.0f, 1.0f, 0, 0, 0, 0, 0);
+    S3D_ScreenVert tr = ndc_to_screen(1.0f, 1.0f, 1.0f, 0, 0, 0, 0, 0, 1.0f);
     ASSERT_NEAR(tr.x, 320.0f, 0.01f);
     ASSERT_NEAR(tr.y, 0.0f, 0.01f);
     ASSERT_NEAR(tr.z, 1.0f, 1e-6f);
@@ -246,17 +246,17 @@ TEST(ndc_corners) {
 
 TEST(backface_cw_is_front) {
     /* CW in screen space (Y-down): top, bottom-right, bottom-left */
-    S3D_ScreenVert a = {160, 10, 0.5f, 0, 0, 1, 0, 0};
-    S3D_ScreenVert b = {200, 200, 0.5f, 0, 0, 0, 1, 0};
-    S3D_ScreenVert c = {120, 200, 0.5f, 0, 0, 0, 0, 1};
+    S3D_ScreenVert a = {160, 10, 0.5f, 0, 0, 1, 0, 0, 0};
+    S3D_ScreenVert b = {200, 200, 0.5f, 0, 0, 0, 1, 0, 0};
+    S3D_ScreenVert c = {120, 200, 0.5f, 0, 0, 0, 0, 1, 0};
     ASSERT_TRUE(is_front_facing(a, b, c));
 }
 
 TEST(backface_ccw_is_back) {
     /* CCW in screen space: top, bottom-left, bottom-right */
-    S3D_ScreenVert a = {160, 10, 0.5f, 0, 0, 1, 0, 0};
-    S3D_ScreenVert b = {120, 200, 0.5f, 0, 0, 0, 0, 1};
-    S3D_ScreenVert c = {200, 200, 0.5f, 0, 0, 0, 1, 0};
+    S3D_ScreenVert a = {160, 10, 0.5f, 0, 0, 1, 0, 0, 0};
+    S3D_ScreenVert b = {120, 200, 0.5f, 0, 0, 0, 0, 1, 0};
+    S3D_ScreenVert c = {200, 200, 0.5f, 0, 0, 0, 1, 0, 0};
     ASSERT_TRUE(!is_front_facing(a, b, c));
 }
 

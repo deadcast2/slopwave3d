@@ -34,6 +34,12 @@ EXPORTED_FUNCTIONS = \
 	_s3d_object_alpha, \
 	_s3d_object_active, \
 	_s3d_render_scene, \
+	_s3d_light_ambient, \
+	_s3d_light_directional, \
+	_s3d_light_point, \
+	_s3d_light_spot, \
+	_s3d_light_off, \
+	_s3d_fog_set, \
 	_malloc, \
 	_free
 

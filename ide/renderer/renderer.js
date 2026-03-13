@@ -148,15 +148,7 @@ async function runScene(source) {
     try {
         const engine = new Slop3D('game-canvas');
         await engine.init();
-
-        const fn = new Function(
-            '_e', '_rt',
-            '_sin', '_cos', '_tan', '_lerp', '_clamp',
-            '_random', '_abs', '_min', '_max', '_range',
-            'return (async function(){' + js + '})();'
-        );
-        const rt = new SlopRuntime(engine);
-        await fn(engine, rt, _sin, _cos, _tan, _lerp, _clamp, _random, _abs, _min, _max, _range);
+        await SlopScript.exec(js, engine);
 
         // New engine is running — now stop the old one
         if (currentEngine) {
