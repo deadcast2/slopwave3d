@@ -329,9 +329,14 @@ describe('CodeGen', () => {
         assert.ok(js.includes('_rt.dt'));
     });
 
-    it('maps camera to runtime', () => {
-        const js = gen('scene main\n    update\n        camera.position = 0, 1, 5\n');
-        assert.ok(js.includes('_rt.camera.position.setAll'));
+    it('generates camera creation', () => {
+        const js = gen('scene main\n    cam = camera: 0, 1, 5\n');
+        assert.ok(js.includes('_rt.camera(0, 1, 5)'));
+    });
+
+    it('generates use call', () => {
+        const js = gen('scene main\n    cam = camera: 0, 1, 5\n    update\n        use: cam\n');
+        assert.ok(js.includes('_rt.use(_s.cam)'));
     });
 
     it('generates degree-based math calls', () => {
@@ -406,10 +411,10 @@ describe('CodeGen', () => {
 
     it('full spinning cube generates valid structure', () => {
         const js = gen(
-            'assets\n    model cube = cube.obj\nscene main\n    box = spawn: cube\n    camera.position = 0, 1.5, 5\n    update\n        box.rotation.y = t * 30\n'
+            'assets\n    model cube = cube.obj\nscene main\n    box = spawn: cube\n    cam = camera: 0, 1.5, 5\n    update\n        box.rotation.y = t * 30\n'
         );
         assert.ok(js.includes("_rt.spawn('cube')"));
-        assert.ok(js.includes('_rt.camera.position.setAll(0, 1.5, 5)'));
+        assert.ok(js.includes('_rt.camera(0, 1.5, 5)'));
         assert.ok(js.includes('_s.box.rotation.y'));
         assert.ok(js.includes('_rt.start()'));
     });

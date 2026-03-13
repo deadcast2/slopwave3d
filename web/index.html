@@ -43,6 +43,7 @@ assets
     skin crate = crate.jpg
 
 scene main
+    cam = camera: 0, 1.5, 5
     fill = ambient: 0.3, 0.3, 0.3
     sun = directional: 1.0, 0.9, 0.8, -1, -1, -1
     glow = point: 0.3, 0.6, 1.0, 3, 1, 0, 10
@@ -60,8 +61,8 @@ scene main
     box3.color = 1.0, 0.5, 0.5
 
     update
-        camera.position = sin[t * 34.4] * 5, 1.5, cos[t * 34.4] * 5
-        camera.target = 0, 0, 0
+        cam.position = sin[t * 34.4] * 5, 1.5, cos[t * 34.4] * 5
+        cam.target = 0, 0, 0
         box1.rotation.y = t * 18
         box2.rotation = t * 12, 0, t * 24
         box3.rotation.y = t * -9

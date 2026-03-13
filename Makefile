@@ -10,9 +10,15 @@ EXPORTED_FUNCTIONS = \
 	_s3d_get_framebuffer, \
 	_s3d_get_width, \
 	_s3d_get_height, \
-	_s3d_camera_set, \
-	_s3d_camera_fov, \
-	_s3d_camera_clip, \
+	_s3d_camera_create, \
+	_s3d_camera_destroy, \
+	_s3d_camera_pos, \
+	_s3d_camera_target, \
+	_s3d_camera_set_fov, \
+	_s3d_camera_set_clip, \
+	_s3d_camera_activate, \
+	_s3d_camera_off, \
+	_s3d_camera_get_active, \
 	_s3d_texture_create, \
 	_s3d_texture_get_data_ptr, \
 	_s3d_mesh_create, \

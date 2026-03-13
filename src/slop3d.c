@@ -183,6 +183,7 @@ static inline S3D_Mat4 m4_inverse_affine(S3D_Mat4 m) {
 /* ── engine state ────────────────────────────────────────────────────── */
 
 typedef struct {
+    int active;
     S3D_Vec3 position;
     S3D_Vec3 target;
     S3D_Vec3 up;
@@ -198,7 +199,8 @@ typedef struct {
     uint8_t framebuffer[S3D_WIDTH * S3D_HEIGHT * 4];
     uint16_t zbuffer[S3D_WIDTH * S3D_HEIGHT];
     uint8_t clear_r, clear_g, clear_b, clear_a;
-    S3D_Camera camera;
+    S3D_Camera cameras[S3D_MAX_CAMERAS];
+    int active_camera;
 
     S3D_Texture textures[S3D_MAX_TEXTURES];
     S3D_Mesh meshes[S3D_MAX_MESHES];
@@ -498,8 +500,8 @@ static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1, S3D_Scr
 
 /* ── camera ──────────────────────────────────────────────────────────── */
 
-static void update_camera(void) {
-    S3D_Camera *cam = &g_engine.camera;
+static void update_camera(int id) {
+    S3D_Camera *cam = &g_engine.cameras[id];
     float aspect = (float)S3D_WIDTH / (float)S3D_HEIGHT;
     cam->view = m4_lookat(cam->position, cam->target, cam->up);
     cam->projection = m4_perspective(cam->fov, aspect, cam->near_clip, cam->far_clip);
@@ -512,14 +514,7 @@ EMSCRIPTEN_KEEPALIVE
 void s3d_init(void) {
     memset(&g_engine, 0, sizeof(g_engine));
     g_engine.clear_a = 255;
-
-    g_engine.camera.position = s3d_vec3(0.0f, 0.0f, 5.0f);
-    g_engine.camera.target = s3d_vec3(0.0f, 0.0f, 0.0f);
-    g_engine.camera.up = s3d_vec3(0.0f, 1.0f, 0.0f);
-    g_engine.camera.fov = 60.0f;
-    g_engine.camera.near_clip = 0.1f;
-    g_engine.camera.far_clip = 100.0f;
-    update_camera();
+    g_engine.active_camera = -1;
 }
 
 EMSCRIPTEN_KEEPALIVE
@@ -555,25 +550,74 @@ EMSCRIPTEN_KEEPALIVE
 int s3d_get_height(void) { return S3D_HEIGHT; }
 
 EMSCRIPTEN_KEEPALIVE
-void s3d_camera_set(float px, float py, float pz, float tx, float ty, float tz, float ux, float uy, float uz) {
-    g_engine.camera.position = s3d_vec3(px, py, pz);
-    g_engine.camera.target = s3d_vec3(tx, ty, tz);
-    g_engine.camera.up = s3d_vec3(ux, uy, uz);
-    update_camera();
+int s3d_camera_create(float px, float py, float pz, float tx, float ty, float tz) {
+    for (int i = 0; i < S3D_MAX_CAMERAS; i++) {
+        if (!g_engine.cameras[i].active) {
+            S3D_Camera *cam = &g_engine.cameras[i];
+            cam->active = 1;
+            cam->position = s3d_vec3(px, py, pz);
+            cam->target = s3d_vec3(tx, ty, tz);
+            cam->up = s3d_vec3(0.0f, 1.0f, 0.0f);
+            cam->fov = 60.0f;
+            cam->near_clip = 0.1f;
+            cam->far_clip = 100.0f;
+            update_camera(i);
+            return i;
+        }
+    }
+    return -1;
 }
 
 EMSCRIPTEN_KEEPALIVE
-void s3d_camera_fov(float fov_degrees) {
-    g_engine.camera.fov = fov_degrees;
-    update_camera();
+void s3d_camera_destroy(int camera_id) {
+    if (camera_id < 0 || camera_id >= S3D_MAX_CAMERAS) return;
+    g_engine.cameras[camera_id].active = 0;
+    if (g_engine.active_camera == camera_id) g_engine.active_camera = -1;
 }
 
 EMSCRIPTEN_KEEPALIVE
-void s3d_camera_clip(float near_clip, float far_clip) {
-    g_engine.camera.near_clip = near_clip;
-    g_engine.camera.far_clip = far_clip;
-    update_camera();
+void s3d_camera_pos(int camera_id, float x, float y, float z) {
+    if (camera_id < 0 || camera_id >= S3D_MAX_CAMERAS || !g_engine.cameras[camera_id].active) return;
+    g_engine.cameras[camera_id].position = s3d_vec3(x, y, z);
+    update_camera(camera_id);
 }
+
+EMSCRIPTEN_KEEPALIVE
+void s3d_camera_target(int camera_id, float x, float y, float z) {
+    if (camera_id < 0 || camera_id >= S3D_MAX_CAMERAS || !g_engine.cameras[camera_id].active) return;
+    g_engine.cameras[camera_id].target = s3d_vec3(x, y, z);
+    update_camera(camera_id);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void s3d_camera_set_fov(int camera_id, float fov_degrees) {
+    if (camera_id < 0 || camera_id >= S3D_MAX_CAMERAS || !g_engine.cameras[camera_id].active) return;
+    g_engine.cameras[camera_id].fov = fov_degrees;
+    update_camera(camera_id);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void s3d_camera_set_clip(int camera_id, float near_clip, float far_clip) {
+    if (camera_id < 0 || camera_id >= S3D_MAX_CAMERAS || !g_engine.cameras[camera_id].active) return;
+    g_engine.cameras[camera_id].near_clip = near_clip;
+    g_engine.cameras[camera_id].far_clip = far_clip;
+    update_camera(camera_id);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void s3d_camera_activate(int camera_id) {
+    if (camera_id < 0 || camera_id >= S3D_MAX_CAMERAS || !g_engine.cameras[camera_id].active) return;
+    g_engine.active_camera = camera_id;
+}
+
+EMSCRIPTEN_KEEPALIVE
+void s3d_camera_off(int camera_id) {
+    if (camera_id < 0 || camera_id >= S3D_MAX_CAMERAS) return;
+    if (g_engine.active_camera == camera_id) g_engine.active_camera = -1;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int s3d_camera_get_active(void) { return g_engine.active_camera; }
 
 /* ── texture API ─────────────────────────────────────────────────────── */
 
@@ -1024,8 +1068,11 @@ void s3d_light_off(int light_id) {
 
 EMSCRIPTEN_KEEPALIVE
 void s3d_render_scene(void) {
-    S3D_Mat4 vp = g_engine.camera.vp;
-    S3D_Vec3 cam_pos = g_engine.camera.position;
+    if (g_engine.active_camera < 0) return;
+    S3D_Camera *active_cam = &g_engine.cameras[g_engine.active_camera];
+    if (!active_cam->active) return;
+    S3D_Mat4 vp = active_cam->vp;
+    S3D_Vec3 cam_pos = active_cam->position;
 
     int opaque[S3D_MAX_OBJECTS];
     int opaque_count = 0;

@@ -11,7 +11,7 @@ scene main
     sun = directional: 1.0, 0.9, 0.8, -1, -1, -1
 
     box = spawn: cube, crate
-    camera.position = 0, 1.5, 5
+    cam = camera: 0, 1.5, 5
 
     update
         box.rotation.y = t * 30

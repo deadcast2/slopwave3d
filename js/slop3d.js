@@ -17,10 +17,7 @@ class Slop3D {
         this._getFramebuffer = this.module.cwrap('s3d_get_framebuffer', 'number', []);
         this._getWidth = this.module.cwrap('s3d_get_width', 'number', []);
         this._getHeight = this.module.cwrap('s3d_get_height', 'number', []);
-        this._cameraSet = this.module.cwrap('s3d_camera_set', null, [
-            'number',
-            'number',
-            'number',
+        this._cameraCreate = this.module.cwrap('s3d_camera_create', 'number', [
             'number',
             'number',
             'number',
@@ -28,8 +25,14 @@ class Slop3D {
             'number',
             'number',
         ]);
-        this._cameraFov = this.module.cwrap('s3d_camera_fov', null, ['number']);
-        this._cameraClip = this.module.cwrap('s3d_camera_clip', null, ['number', 'number']);
+        this._cameraDestroy = this.module.cwrap('s3d_camera_destroy', null, ['number']);
+        this._cameraPos = this.module.cwrap('s3d_camera_pos', null, ['number', 'number', 'number', 'number']);
+        this._cameraTarget = this.module.cwrap('s3d_camera_target', null, ['number', 'number', 'number', 'number']);
+        this._cameraSetFov = this.module.cwrap('s3d_camera_set_fov', null, ['number', 'number']);
+        this._cameraSetClip = this.module.cwrap('s3d_camera_set_clip', null, ['number', 'number', 'number']);
+        this._cameraActivate = this.module.cwrap('s3d_camera_activate', null, ['number']);
+        this._cameraOff = this.module.cwrap('s3d_camera_off', null, ['number']);
+        this._cameraGetActive = this.module.cwrap('s3d_camera_get_active', 'number', []);
         this._textureCreate = this.module.cwrap('s3d_texture_create', 'number', ['number', 'number']);
         this._textureGetDataPtr = this.module.cwrap('s3d_texture_get_data_ptr', 'number', ['number']);
         this._meshLoadObj = this.module.cwrap('s3d_mesh_load_obj', 'number', ['number', 'number']);
@@ -92,16 +95,36 @@ class Slop3D {
         this._clearColor(r, g, b, a);
     }
 
-    setCamera(pos, target, up = { x: 0, y: 1, z: 0 }) {
-        this._cameraSet(pos.x, pos.y, pos.z, target.x, target.y, target.z, up.x, up.y, up.z);
+    createCamera(px, py, pz, tx, ty, tz) {
+        return this._cameraCreate(px, py, pz, tx, ty, tz);
     }
 
-    setCameraFov(degrees) {
-        this._cameraFov(degrees);
+    destroyCamera(id) {
+        this._cameraDestroy(id);
     }
 
-    setCameraClip(near, far) {
-        this._cameraClip(near, far);
+    setCameraPos(id, x, y, z) {
+        this._cameraPos(id, x, y, z);
+    }
+
+    setCameraTarget(id, x, y, z) {
+        this._cameraTarget(id, x, y, z);
+    }
+
+    setCameraFov(id, degrees) {
+        this._cameraSetFov(id, degrees);
+    }
+
+    setCameraClip(id, near, far) {
+        this._cameraSetClip(id, near, far);
+    }
+
+    setCameraActive(id) {
+        this._cameraActivate(id);
+    }
+
+    setCameraOff(id) {
+        this._cameraOff(id);
     }
 
     async loadTexture(url) {
@@ -437,51 +460,50 @@ class SlopLight {
 }
 
 class SlopCamera {
-    constructor(engine) {
+    constructor(engine, id) {
         this._e = engine;
+        this._id = id;
         this._fov = 60;
         this._near = 0.1;
         this._far = 100;
-        this.position = new SlopVec3(() => this._flush(), 0, 0, 5);
-        this.target = new SlopVec3(() => this._flush());
+        this.position = new SlopVec3(v => this._e.setCameraPos(this._id, v._x, v._y, v._z));
+        this.target = new SlopVec3(v => this._e.setCameraTarget(this._id, v._x, v._y, v._z));
     }
-    _flush() {
-        const p = this.position,
-            t = this.target;
-        this._e.setCamera({ x: p._x, y: p._y, z: p._z }, { x: t._x, y: t._y, z: t._z });
+    get id() {
+        return this._id;
     }
     get fov() {
         return this._fov;
     }
     set fov(v) {
         this._fov = v;
-        this._e.setCameraFov(v);
+        this._e.setCameraFov(this._id, v);
     }
     get near() {
         return this._near;
     }
     set near(v) {
         this._near = v;
-        this._e.setCameraClip(this._near, this._far);
+        this._e.setCameraClip(this._id, this._near, this._far);
     }
     get far() {
         return this._far;
     }
     set far(v) {
         this._far = v;
-        this._e.setCameraClip(this._near, this._far);
+        this._e.setCameraClip(this._id, this._near, this._far);
     }
 }
 
 class SlopRuntime {
     constructor(engine) {
         this._e = engine;
-        this.camera = new SlopCamera(engine);
         this.assets = { meshes: {}, textures: {} };
         this.scenes = {};
         this._activeScene = null;
         this._sceneObjects = [];
         this._sceneLights = [];
+        this._sceneCameras = [];
         this._scope = null;
         this.t = 0;
         this.dt = 0;
@@ -496,10 +518,15 @@ class SlopRuntime {
         this._sceneObjects.push(obj);
         return obj;
     }
-    kill(obj) {
-        this._e.destroyObject(obj.id);
-        const i = this._sceneObjects.indexOf(obj);
-        if (i >= 0) this._sceneObjects.splice(i, 1);
+    kill(target) {
+        if (target instanceof SlopCamera) {
+            this._e.destroyCamera(target.id);
+            this._sceneCameras[target.id] = null;
+        } else {
+            this._e.destroyObject(target.id);
+            const i = this._sceneObjects.indexOf(target);
+            if (i >= 0) this._sceneObjects.splice(i, 1);
+        }
     }
     light(type, ...args) {
         let id = -1;
@@ -533,8 +560,38 @@ class SlopRuntime {
         this._sceneLights[id] = l;
         return l;
     }
+    camera(...args) {
+        if (args.length < 3) throw new Error('camera() requires at least 3 args (px, py, pz)');
+        const px = args[0],
+            py = args[1],
+            pz = args[2];
+        const tx = args.length >= 6 ? args[3] : 0,
+            ty = args.length >= 6 ? args[4] : 0,
+            tz = args.length >= 6 ? args[5] : 0;
+        const id = this._e.createCamera(px, py, pz, tx, ty, tz);
+        if (id < 0) throw new Error('No free camera slots');
+        const cam = new SlopCamera(this._e, id);
+        cam.position._x = px;
+        cam.position._y = py;
+        cam.position._z = pz;
+        cam.target._x = tx;
+        cam.target._y = ty;
+        cam.target._z = tz;
+        this._sceneCameras[id] = cam;
+        if (this._sceneCameras.filter(Boolean).length === 1) {
+            this._e.setCameraActive(id);
+        }
+        return cam;
+    }
+    use(target) {
+        if (target instanceof SlopCamera) {
+            this._e.setCameraActive(target.id);
+        }
+    }
     off(target) {
-        if (target instanceof SlopLight) {
+        if (target instanceof SlopCamera) {
+            this._e.setCameraOff(target.id);
+        } else if (target instanceof SlopLight) {
             this._e.setLightOff(target.id);
             this._sceneLights[target.id] = null;
         } else if (target instanceof SlopObject) {
@@ -542,7 +599,9 @@ class SlopRuntime {
         }
     }
     on(target) {
-        if (target instanceof SlopLight) {
+        if (target instanceof SlopCamera) {
+            this._e.setCameraActive(target.id);
+        } else if (target instanceof SlopLight) {
             this._sceneLights[target.id] = target;
             target._flush();
         } else if (target instanceof SlopObject) {
@@ -556,6 +615,10 @@ class SlopRuntime {
             if (this._sceneLights[i]) {
                 this._e.setLightOff(i);
                 this._sceneLights[i] = null;
+            }
+            if (this._sceneCameras[i]) {
+                this._e.destroyCamera(i);
+                this._sceneCameras[i] = null;
             }
         }
         this._activeScene = name;
@@ -619,6 +682,8 @@ const KEYWORDS = new Set([
     'goto',
     'off',
     'on',
+    'use',
+    'camera',
     'ambient',
     'directional',
     'point',
@@ -901,7 +966,7 @@ function slopParse(tokens) {
         // colon-style statement calls: goto:, destroy:, or ident:
         if (
             at(TK.IDENT) &&
-            (t.val === 'goto' || t.val === 'kill' || t.val === 'off' || t.val === 'on') &&
+            (t.val === 'goto' || t.val === 'kill' || t.val === 'off' || t.val === 'on' || t.val === 'use') &&
             tokens[pos + 1] &&
             tokens[pos + 1].type === TK.COLON
         )
@@ -947,6 +1012,27 @@ function slopParse(tokens) {
                     target: left,
                     mesh,
                     skin,
+                    line: ln,
+                };
+            }
+            // camera creation: camera: px, py, pz [, tx, ty, tz]
+            if (at(TK.IDENT, 'camera')) {
+                eat(TK.IDENT);
+                eat(TK.COLON);
+                const args = [];
+                if (!at(TK.NEWLINE) && !at(TK.EOF)) {
+                    args.push(parseExpr());
+                    while (at(TK.COMMA)) {
+                        eat(TK.COMMA);
+                        args.push(parseExpr());
+                    }
+                }
+                if (args.length < 3) throw new Error(`camera: requires at least 3 args (px, py, pz) at line ${ln}`);
+                if (at(TK.NEWLINE)) eat(TK.NEWLINE);
+                return {
+                    type: 'CameraAssign',
+                    target: left,
+                    args,
                     line: ln,
                 };
             }
@@ -1181,7 +1267,7 @@ function slopParse(tokens) {
 
 // --- Phase 4: Code Generator ---
 
-const SLOP_BUILTINS = new Set(['t', 'dt', 'camera']);
+const SLOP_BUILTINS = new Set(['t', 'dt']);
 const SLOP_MATH = new Set(['sin', 'cos', 'tan', 'lerp', 'clamp', 'random', 'abs', 'min', 'max', 'range']);
 
 function slopGenerate(ast) {
@@ -1259,6 +1345,12 @@ function slopGenerate(ast) {
                 emit(`${tgt} = _rt.spawn(${args});`);
                 break;
             }
+            case 'CameraAssign': {
+                const tgt = emitExpr(node.target);
+                const args = node.args.map(emitExpr).join(', ');
+                emit(`${tgt} = _rt.camera(${args});`);
+                break;
+            }
             case 'LightAssign': {
                 const tgt = emitExpr(node.target);
                 const args = node.args.map(emitExpr).join(', ');
@@ -1274,6 +1366,8 @@ function slopGenerate(ast) {
                     emit(`_rt.off(${emitExpr(node.args[0])});`);
                 } else if (node.name === 'on') {
                     emit(`_rt.on(${emitExpr(node.args[0])});`);
+                } else if (node.name === 'use') {
+                    emit(`_rt.use(${emitExpr(node.args[0])});`);
                 } else {
                     const args = node.args.map(emitExpr).join(', ');
                     emit(`_s.${node.name}(${args});`);
@@ -1350,7 +1444,6 @@ function slopGenerate(ast) {
                 return String(node.val);
             case 'Ident':
                 if (node.name === 't' || node.name === 'dt') return '_rt.' + node.name;
-                if (node.name === 'camera') return '_rt.camera';
                 return '_s.' + node.name;
             case 'Dot':
                 return emitExpr(node.object) + '.' + node.property;

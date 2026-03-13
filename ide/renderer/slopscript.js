@@ -9,11 +9,11 @@ function registerSlopScript(monaco) {
             'assets', 'scene', 'update', 'spawn', 'model', 'skin',
             'if', 'elif', 'else', 'while', 'for', 'fn', 'return',
             'in', 'range', 'and', 'or', 'not', 'true', 'false',
-            'goto', 'kill', 'off', 'on',
+            'goto', 'kill', 'off', 'on', 'use', 'camera',
         ],
         lights: ['ambient', 'directional', 'point', 'spot'],
         builtins: ['sin', 'cos', 'tan', 'lerp', 'clamp', 'random', 'abs', 'min', 'max'],
-        globals: ['camera', 't', 'dt'],
+        globals: ['t', 'dt'],
 
         tokenizer: {
             root: [

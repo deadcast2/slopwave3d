@@ -144,9 +144,18 @@ TEST(m4_inverse_affine_rotation) {
 
 /* ── camera tests ────────────────────────────────────────────────────── */
 
-TEST(camera_defaults) {
+TEST(camera_no_default) {
     s3d_init();
-    S3D_Camera *cam = &g_engine.camera;
+    ASSERT_TRUE(g_engine.active_camera == -1);
+    for (int i = 0; i < S3D_MAX_CAMERAS; i++) { ASSERT_TRUE(!g_engine.cameras[i].active); }
+}
+
+TEST(camera_create) {
+    s3d_init();
+    int id = s3d_camera_create(0, 0, 5, 0, 0, 0);
+    ASSERT_TRUE(id >= 0);
+    S3D_Camera *cam = &g_engine.cameras[id];
+    ASSERT_TRUE(cam->active);
     ASSERT_TRUE(v3_near(cam->position, (S3D_Vec3){0, 0, 5}, 1e-6f));
     ASSERT_TRUE(v3_near(cam->target, (S3D_Vec3){0, 0, 0}, 1e-6f));
     ASSERT_NEAR(cam->fov, 60.0f, 1e-6f);
@@ -156,41 +165,55 @@ TEST(camera_defaults) {
 
 TEST(camera_origin_projects_to_center) {
     s3d_init();
-    /* transform origin through VP, then perspective divide + viewport */
-    S3D_Vec4 clip = m4_mul_vec4(g_engine.camera.vp, (S3D_Vec4){0, 0, 0, 1});
+    int id = s3d_camera_create(0, 0, 5, 0, 0, 0);
+    S3D_Vec4 clip = m4_mul_vec4(g_engine.cameras[id].vp, (S3D_Vec4){0, 0, 0, 1});
     float ndc_x = clip.x / clip.w;
     float ndc_y = clip.y / clip.w;
-    /* NDC (0,0) = screen center */
     ASSERT_NEAR(ndc_x, 0.0f, 1e-5f);
     ASSERT_NEAR(ndc_y, 0.0f, 1e-5f);
 }
 
 TEST(camera_right_projects_right) {
     s3d_init();
-    S3D_Vec4 clip = m4_mul_vec4(g_engine.camera.vp, (S3D_Vec4){1, 0, 0, 1});
+    int id = s3d_camera_create(0, 0, 5, 0, 0, 0);
+    S3D_Vec4 clip = m4_mul_vec4(g_engine.cameras[id].vp, (S3D_Vec4){1, 0, 0, 1});
     float ndc_x = clip.x / clip.w;
-    /* point to the right in world = positive ndc_x */
     ASSERT_TRUE(ndc_x > 0.0f);
 }
 
-TEST(camera_set) {
+TEST(camera_activate) {
     s3d_init();
-    s3d_camera_set(10, 20, 30, 1, 2, 3, 0, 1, 0);
-    ASSERT_TRUE(v3_near(g_engine.camera.position, (S3D_Vec3){10, 20, 30}, 1e-6f));
-    ASSERT_TRUE(v3_near(g_engine.camera.target, (S3D_Vec3){1, 2, 3}, 1e-6f));
+    int c0 = s3d_camera_create(0, 0, 5, 0, 0, 0);
+    int c1 = s3d_camera_create(10, 0, 0, 0, 0, 0);
+    s3d_camera_activate(c0);
+    ASSERT_TRUE(g_engine.active_camera == c0);
+    s3d_camera_activate(c1);
+    ASSERT_TRUE(g_engine.active_camera == c1);
+}
+
+TEST(camera_destroy) {
+    s3d_init();
+    int id = s3d_camera_create(0, 0, 5, 0, 0, 0);
+    s3d_camera_activate(id);
+    ASSERT_TRUE(g_engine.active_camera == id);
+    s3d_camera_destroy(id);
+    ASSERT_TRUE(!g_engine.cameras[id].active);
+    ASSERT_TRUE(g_engine.active_camera == -1);
 }
 
 TEST(camera_fov) {
     s3d_init();
-    s3d_camera_fov(90.0f);
-    ASSERT_NEAR(g_engine.camera.fov, 90.0f, 1e-6f);
+    int id = s3d_camera_create(0, 0, 5, 0, 0, 0);
+    s3d_camera_set_fov(id, 90.0f);
+    ASSERT_NEAR(g_engine.cameras[id].fov, 90.0f, 1e-6f);
 }
 
 TEST(camera_clip) {
     s3d_init();
-    s3d_camera_clip(1.0f, 500.0f);
-    ASSERT_NEAR(g_engine.camera.near_clip, 1.0f, 1e-6f);
-    ASSERT_NEAR(g_engine.camera.far_clip, 500.0f, 1e-6f);
+    int id = s3d_camera_create(0, 0, 5, 0, 0, 0);
+    s3d_camera_set_clip(id, 1.0f, 500.0f);
+    ASSERT_NEAR(g_engine.cameras[id].near_clip, 1.0f, 1e-6f);
+    ASSERT_NEAR(g_engine.cameras[id].far_clip, 500.0f, 1e-6f);
 }
 
 /* ── viewport transform tests ────────────────────────────────────────── */
@@ -330,6 +353,8 @@ static int make_test_tri_mesh(float x0, float y0, float z0, float x1, float y1, 
 
 TEST(rasterize_fills_pixels) {
     s3d_init();
+    int cid = s3d_camera_create(0, 0, 5, 0, 0, 0);
+    s3d_camera_activate(cid);
     s3d_frame_begin();
 
     int mid = make_test_tri_mesh(0, 1, 0, 1, -1, 0, -1, -1, 0);
@@ -346,6 +371,8 @@ TEST(rasterize_fills_pixels) {
 
 TEST(rasterize_zbuffer_occlusion) {
     s3d_init();
+    int cid = s3d_camera_create(0, 0, 5, 0, 0, 0);
+    s3d_camera_activate(cid);
     s3d_frame_begin();
 
     /* front object: red, at z=0 */
@@ -393,10 +420,12 @@ int main(void) {
     RUN(m4_inverse_affine_rotation);
 
     printf("camera:\n");
-    RUN(camera_defaults);
+    RUN(camera_no_default);
+    RUN(camera_create);
     RUN(camera_origin_projects_to_center);
     RUN(camera_right_projects_right);
-    RUN(camera_set);
+    RUN(camera_activate);
+    RUN(camera_destroy);
     RUN(camera_fov);
     RUN(camera_clip);
 

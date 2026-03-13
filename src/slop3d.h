@@ -20,6 +20,7 @@ typedef signed long int32_t;
 #define S3D_MAX_TEX_SIZE 128
 #define S3D_MAX_OBJECTS 256
 #define S3D_MAX_LIGHTS 8
+#define S3D_MAX_CAMERAS 8
 
 typedef struct {
     float x, y, z;
@@ -108,9 +109,15 @@ uint8_t *s3d_get_framebuffer(void);
 int s3d_get_width(void);
 int s3d_get_height(void);
 
-void s3d_camera_set(float px, float py, float pz, float tx, float ty, float tz, float ux, float uy, float uz);
-void s3d_camera_fov(float fov_degrees);
-void s3d_camera_clip(float near_clip, float far_clip);
+int s3d_camera_create(float px, float py, float pz, float tx, float ty, float tz);
+void s3d_camera_destroy(int camera_id);
+void s3d_camera_pos(int camera_id, float x, float y, float z);
+void s3d_camera_target(int camera_id, float x, float y, float z);
+void s3d_camera_set_fov(int camera_id, float fov_degrees);
+void s3d_camera_set_clip(int camera_id, float near_clip, float far_clip);
+void s3d_camera_activate(int camera_id);
+void s3d_camera_off(int camera_id);
+int s3d_camera_get_active(void);
 
 int s3d_texture_create(int width, int height);
 uint8_t *s3d_texture_get_data_ptr(int texture_id);

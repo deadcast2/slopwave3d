@@ -34,7 +34,7 @@ These are deliberate design choices for authenticity, not limitations to fix:
 
 - Code prefix: `s3d_` for functions, `S3D_` for types/structs
 - Single global engine instance (`g_engine`), no dynamic allocation at runtime
-- Fixed-size arrays: 64 textures, 128 meshes, 256 objects, 8 lights
+- Fixed-size arrays: 64 textures, 128 meshes, 256 objects, 8 lights, 8 cameras
 - Column-major matrices (OpenGL convention): `m[col*4 + row]`
 - CW winding = front face (backface culling always on)
 - All math functions are `static inline` in `slop3d.c`
@@ -70,7 +70,7 @@ Outputs `web/slop3d_wasm.js` and `web/slop3d_wasm.wasm`. Open `http://localhost:
 ## Key Technical Details
 
 ### Rendering Pipeline
-1. Compute camera view/projection matrices
+1. Use active camera's view/projection matrices (no rendering if no active camera)
 2. Sort: opaque objects first, then transparent back-to-front
 3. Per object: transform vertices to clip space, compute Gouraud lighting in world space
 4. Per triangle: backface cull → near-plane clip (Sutherland-Hodgman) → perspective divide → viewport transform
@@ -99,10 +99,10 @@ assets
     skin crate = crate.jpg
 
 scene main
+    cam = camera: 0, 1.5, 5
     sun = directional: 1.0, 0.9, 0.8, -1, -1, -1
     box = spawn: cube, crate
     box.position = 2.5, 0, 0
-    camera.position = 0, 1.5, 5
 
     update
         box.rotation.y = t * 30
@@ -119,20 +119,23 @@ scene main
 
 ### Built-ins
 - `t` (elapsed seconds), `dt` (delta time)
-- `camera` singleton with `.position`, `.target`, `.fov`, `.near`, `.far`
 - Math (degree-based): `sin[]`, `cos[]`, `tan[]`, `lerp[]`, `clamp[]`, `random[]`, `abs[]`, `min[]`, `max[]`
 - Control flow: `if`/`elif`/`else`, `while`, `for x in range[n]`, `fn name: args`, `return`
 - Boolean: `and`, `or`, `not`, `true`, `false`
 
-### Objects & Lights
+### Objects, Cameras & Lights
+- `cam = camera: px, py, pz` — create a camera at position (target defaults to origin). First camera auto-activates. Reactive `.position`, `.target`, `.fov`, `.near`, `.far`
+- `cam = camera: px, py, pz, tx, ty, tz` — create with explicit target
+- `use: cam` — switch to a different camera for rendering
+- No implicit/default camera — a scene must create one before anything renders
 - `box = spawn: meshname, skinname` — create a scene object (reactive `.position`, `.rotation`, `.scale`, `.color`, `.alpha`)
 - `sun = ambient: r, g, b` — ambient light (reactive `.color`)
 - `sun = directional: r, g, b, dx, dy, dz` — directional light (reactive `.color`, `.direction`)
 - `glow = point: r, g, b, x, y, z, range` — point light (reactive `.color`, `.position`, `.range`)
 - `beam = spot: r, g, b, x, y, z, dx, dy, dz, range, inner, outer` — spot light (reactive `.color`, `.position`, `.direction`, `.range`, `.inner_angle`, `.outer_angle`)
-- `kill: obj` — destroy an object
-- `off: target` — turn off a light or deactivate an object
-- `on: target` — turn on a light or reactivate an object
+- `kill: target` — destroy an object or camera
+- `off: target` — turn off a light, deactivate an object, or deactivate a camera
+- `on: target` — turn on a light, reactivate an object, or reactivate a camera
 
 ### Structure
 - `assets` — global block, loaded once before any scene
