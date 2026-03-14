@@ -238,6 +238,11 @@ class SlopCamera {
         this._fov = 60;
         this._near = 0.1;
         this._far = 100;
+        this._behavior = null;
+        this._yaw = 0;
+        this._pitch = 0;
+        this._speed = 5;
+        this._sensitivity = 0.15;
         this.position = new SlopVec3(v => rt._cameraPos(id, v._x, v._y, v._z));
         this.target = new SlopVec3(v => rt._cameraTarget(id, v._x, v._y, v._z));
     }
@@ -265,6 +270,18 @@ class SlopCamera {
         this._far = v;
         this._rt._cameraSetClip(this._id, this._near, this._far);
     }
+    get speed() {
+        return this._speed;
+    }
+    set speed(v) {
+        this._speed = v;
+    }
+    get sensitivity() {
+        return this._sensitivity;
+    }
+    set sensitivity(v) {
+        this._sensitivity = v;
+    }
 }
 
 class SlopRuntime {
@@ -279,6 +296,7 @@ class SlopRuntime {
         this._sceneObjects = [];
         this._sceneLights = [];
         this._sceneCameras = [];
+        this._behaviorCameras = [];
         this._scope = null;
         this.t = 0;
         this.dt = 0;
@@ -380,13 +398,22 @@ class SlopRuntime {
         this._mouseX = 0;
         this._mouseY = 0;
         this._mouseButtons = 0;
+        this._mouseDeltaX = 0;
+        this._mouseDeltaY = 0;
+        this._pointerLockSetup = false;
         document.addEventListener('keydown', e => {
             if (e.keyCode < 256) this._keys[e.keyCode] = 1;
+            if (document.pointerLockElement === this.canvas) e.preventDefault();
         });
         document.addEventListener('keyup', e => {
             if (e.keyCode < 256) this._keys[e.keyCode] = 0;
+            if (document.pointerLockElement === this.canvas) e.preventDefault();
         });
         this.canvas.addEventListener('mousemove', e => {
+            if (document.pointerLockElement === this.canvas) {
+                this._mouseDeltaX += e.movementX;
+                this._mouseDeltaY += e.movementY;
+            }
             const rect = this.canvas.getBoundingClientRect();
             this._mouseX = Math.round(((e.clientX - rect.left) / rect.width) * this.width);
             this._mouseY = Math.round(((e.clientY - rect.top) / rect.height) * this.height);
@@ -492,6 +519,10 @@ class SlopRuntime {
         return l;
     }
     camera(...args) {
+        let behavior = null;
+        if (args.length > 0 && typeof args[args.length - 1] === 'string') {
+            behavior = args.pop();
+        }
         if (args.length < 3) throw new Error('camera() requires at least 3 args (px, py, pz)');
         const px = args[0],
             py = args[1],
@@ -511,6 +542,9 @@ class SlopRuntime {
         this._sceneCameras[id] = cam;
         if (this._sceneCameras.filter(Boolean).length === 1) {
             this._cameraActivate(id);
+        }
+        if (behavior) {
+            this._attachBehavior(cam, behavior);
         }
         return cam;
     }
@@ -545,6 +579,98 @@ class SlopRuntime {
     fog(r, g, b, start, end) {
         this._fogSet(1, r, g, b, start, end);
     }
+    _setupPointerLock() {
+        if (this._pointerLockSetup) return;
+        this._pointerLockSetup = true;
+        this.canvas.setAttribute('tabindex', '0');
+        this.canvas.addEventListener('click', () => {
+            this.canvas.requestPointerLock();
+        });
+        document.addEventListener('pointerlockchange', () => {
+            if (document.pointerLockElement === this.canvas) {
+                this.canvas.focus();
+            }
+        });
+    }
+    _attachBehavior(cam, type) {
+        cam._behavior = type;
+        if (type === 'fps') {
+            const dx = cam.target._x - cam.position._x;
+            const dy = cam.target._y - cam.position._y;
+            const dz = cam.target._z - cam.position._z;
+            cam._yaw = Math.atan2(dx, dz) * (180 / Math.PI);
+            cam._pitch = Math.atan2(dy, Math.sqrt(dx * dx + dz * dz)) * (180 / Math.PI);
+            this._setupPointerLock();
+        }
+        this._behaviorCameras.push(cam);
+    }
+    _updateBehaviors() {
+        for (const cam of this._behaviorCameras) {
+            if (!cam._behavior) continue;
+            if (cam._behavior === 'fps') this._updateFPS(cam, this.dt);
+        }
+    }
+    _updateFPS(cam, dt) {
+        if (document.pointerLockElement === this.canvas) {
+            cam._yaw -= this._mouseDeltaX * cam._sensitivity;
+            cam._pitch -= this._mouseDeltaY * cam._sensitivity;
+            cam._pitch = Math.max(-89, Math.min(89, cam._pitch));
+        }
+        this._mouseDeltaX = 0;
+        this._mouseDeltaY = 0;
+
+        const yawRad = (cam._yaw * Math.PI) / 180;
+        const fwdX = Math.sin(yawRad);
+        const fwdZ = Math.cos(yawRad);
+        const rightX = fwdZ;
+        const rightZ = -fwdX;
+
+        let mx = 0,
+            mz = 0,
+            my = 0;
+        if (this._keys[_KEY_MAP.w]) {
+            mx += fwdX;
+            mz += fwdZ;
+        }
+        if (this._keys[_KEY_MAP.s]) {
+            mx -= fwdX;
+            mz -= fwdZ;
+        }
+        if (this._keys[_KEY_MAP.d]) {
+            mx -= rightX;
+            mz -= rightZ;
+        }
+        if (this._keys[_KEY_MAP.a]) {
+            mx += rightX;
+            mz += rightZ;
+        }
+        if (this._keys[_KEY_MAP.space]) {
+            my += 1;
+        }
+        if (this._keys[_KEY_MAP.shift]) {
+            my -= 1;
+        }
+
+        const len = Math.sqrt(mx * mx + mz * mz);
+        if (len > 0) {
+            mx /= len;
+            mz /= len;
+        }
+
+        const speed = cam._speed * dt;
+        cam.position._x += mx * speed;
+        cam.position._y += my * speed;
+        cam.position._z += mz * speed;
+
+        const pitchRad = (cam._pitch * Math.PI) / 180;
+        const cosPitch = Math.cos(pitchRad);
+        cam.target._x = cam.position._x + Math.sin(yawRad) * cosPitch;
+        cam.target._y = cam.position._y + Math.sin(pitchRad);
+        cam.target._z = cam.position._z + Math.cos(yawRad) * cosPitch;
+
+        this._cameraPos(cam._id, cam.position._x, cam.position._y, cam.position._z);
+        this._cameraTarget(cam._id, cam.target._x, cam.target._y, cam.target._z);
+    }
     get mouse_x() {
         return this._mouseX;
     }
@@ -560,6 +686,7 @@ class SlopRuntime {
     gotoScene(name) {
         for (const obj of this._sceneObjects) this._objectDestroy(obj.id);
         this._sceneObjects = [];
+        this._behaviorCameras = [];
         for (let i = 0; i < 8; i++) {
             if (this._sceneLights[i]) {
                 this._lightOff(i);
@@ -613,6 +740,7 @@ class SlopRuntime {
             }
 
             this._frameBegin();
+            this._updateBehaviors();
 
             const scene = this.scenes[this._activeScene];
             if (scene.update) scene.update(this._scope);
@@ -1014,10 +1142,16 @@ function slopParse(tokens) {
                     line: ln,
                 };
             }
-            // camera creation: camera: px, py, pz [, tx, ty, tz]
+            // camera creation: camera: [behavior,] px, py, pz [, tx, ty, tz]
+            const CAMERA_BEHAVIORS = new Set(['fps']);
             if (at(TK.IDENT, 'camera')) {
                 eat(TK.IDENT);
                 eat(TK.COLON);
+                let behavior = null;
+                if (at(TK.IDENT) && CAMERA_BEHAVIORS.has(peek().val)) {
+                    behavior = eat(TK.IDENT).val;
+                    eat(TK.COMMA);
+                }
                 const args = [];
                 if (!at(TK.NEWLINE) && !at(TK.EOF)) {
                     args.push(parseExpr());
@@ -1031,6 +1165,7 @@ function slopParse(tokens) {
                 return {
                     type: 'CameraAssign',
                     target: left,
+                    behavior,
                     args,
                     line: ln,
                 };
@@ -1347,7 +1482,11 @@ function slopGenerate(ast) {
             case 'CameraAssign': {
                 const tgt = emitExpr(node.target);
                 const args = node.args.map(emitExpr).join(', ');
-                emit(`${tgt} = _rt.camera(${args});`);
+                if (node.behavior) {
+                    emit(`${tgt} = _rt.camera(${args}, '${node.behavior}');`);
+                } else {
+                    emit(`${tgt} = _rt.camera(${args});`);
+                }
                 break;
             }
             case 'LightAssign': {

@@ -6,9 +6,7 @@ const path = require('path');
 // Load SlopScript functions from slop3d.js
 const src = fs.readFileSync(path.join(__dirname, '..', 'js', 'slop3d.js'), 'utf8');
 // Strip browser-only code
-const stripped = src
-    .replace(/if \(typeof document[\s\S]*$/, '')
-    .replace(/class SlopScript \{[\s\S]*?^\}/m, '');
+const stripped = src.replace(/if \(typeof document[\s\S]*$/, '').replace(/class SlopScript \{[\s\S]*?^\}/m, '');
 const mod = new Function(
     stripped +
         '\nreturn { SlopVec3, SlopObject, SlopLight, SlopCamera, SlopRuntime, slopLex, slopParse, slopGenerate, _sin, _cos, _tan, _lerp, _clamp, _random, _abs, _min, _max, _range };'
@@ -294,6 +292,22 @@ describe('Parser', () => {
         assert.equal(stmt.name, 'sky');
         assert.equal(stmt.args.length, 3);
     });
+
+    it('parses camera with fps behavior', () => {
+        const ast = parse('scene main\n    cam = camera: fps, 0, 1.5, 5\n');
+        const stmt = ast.scenes[0].body[0];
+        assert.equal(stmt.type, 'CameraAssign');
+        assert.equal(stmt.behavior, 'fps');
+        assert.equal(stmt.args.length, 3);
+    });
+
+    it('parses camera without behavior', () => {
+        const ast = parse('scene main\n    cam = camera: 0, 1.5, 5\n');
+        const stmt = ast.scenes[0].body[0];
+        assert.equal(stmt.type, 'CameraAssign');
+        assert.equal(stmt.behavior, null);
+        assert.equal(stmt.args.length, 3);
+    });
 });
 
 // --- Code Generator Tests ---
@@ -339,6 +353,11 @@ describe('CodeGen', () => {
     it('generates camera creation', () => {
         const js = gen('scene main\n    cam = camera: 0, 1, 5\n');
         assert.ok(js.includes('_rt.camera(0, 1, 5)'));
+    });
+
+    it('generates camera with fps behavior', () => {
+        const js = gen('scene main\n    cam = camera: fps, 0, 1.5, 5\n');
+        assert.ok(js.includes("_rt.camera(0, 1.5, 5, 'fps')"));
     });
 
     it('generates use call', () => {

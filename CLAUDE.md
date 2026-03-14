@@ -125,6 +125,7 @@ scene main
 ### Objects, Cameras & Lights
 - `cam = camera: px, py, pz` — create a camera at position (target defaults to origin). First camera auto-activates. Reactive `.position`, `.target`, `.fov`, `.near`, `.far`
 - `cam = camera: px, py, pz, tx, ty, tz` — create with explicit target
+- `cam = camera: fps, px, py, pz` — create an FPS camera with WASD movement + mouse look (click canvas to capture mouse). Reactive `.speed` (default 5), `.sensitivity` (default 0.15). Behavior runs before `update` block so user code can override position
 - `use: cam` — switch to a different camera for rendering
 - No implicit/default camera — a scene must create one before anything renders
 - `box = spawn: meshname, skinname` — create a scene object (reactive `.position`, `.rotation`, `.scale`, `.color`, `.alpha`)
