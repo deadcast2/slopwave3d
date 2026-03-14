@@ -48,16 +48,16 @@ async function loadEngine() {
     await loadScript('file://' + projectRoot + '/js/slop3d.js');
 
     // Monkey-patch asset loading to resolve paths against the asset base
-    const origLoadOBJ = Slop3D.prototype.loadOBJ;
-    Slop3D.prototype.loadOBJ = function (url) {
+    const origLoadOBJ = SlopRuntime.prototype.loadOBJ;
+    SlopRuntime.prototype.loadOBJ = function (url) {
         if (!url.startsWith('http') && !url.startsWith('file:') && !url.startsWith('/')) {
             url = 'file://' + assetBasePath + '/' + url;
         }
         return origLoadOBJ.call(this, url);
     };
 
-    const origLoadTexture = Slop3D.prototype.loadTexture;
-    Slop3D.prototype.loadTexture = function (url) {
+    const origLoadTexture = SlopRuntime.prototype.loadTexture;
+    SlopRuntime.prototype.loadTexture = function (url) {
         if (!url.startsWith('http') && !url.startsWith('file:') && !url.startsWith('/')) {
             url = 'file://' + assetBasePath + '/' + url;
         }
@@ -181,14 +181,14 @@ async function runScene(source) {
     resetEditorBackground();
 
     try {
-        const engine = new Slop3D('game-canvas');
-        await engine.init();
-        await SlopScript.exec(js, engine);
+        const rt = new SlopRuntime('game-canvas');
+        await rt.init();
+        await SlopScript.exec(js, rt);
 
         if (currentEngine) {
             try { currentEngine.stop(); } catch (_) {}
         }
-        currentEngine = engine;
+        currentEngine = rt;
         setStatus('Running');
     } catch (err) {
         showError('Runtime: ' + err.message);

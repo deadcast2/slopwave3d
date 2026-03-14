@@ -1,10 +1,289 @@
-class Slop3D {
+// ============================================================
+// SlopScript — DSL transpiler + runtime for slop3d
+// ============================================================
+
+// --- Runtime Helpers ---
+
+const _DEG = Math.PI / 180;
+function _sin(d) {
+    return Math.sin(d * _DEG);
+}
+function _cos(d) {
+    return Math.cos(d * _DEG);
+}
+function _tan(d) {
+    return Math.tan(d * _DEG);
+}
+function _lerp(a, b, t) {
+    return a + (b - a) * t;
+}
+function _clamp(v, lo, hi) {
+    return Math.min(Math.max(v, lo), hi);
+}
+function _random() {
+    return Math.random();
+}
+function _abs(v) {
+    return Math.abs(v);
+}
+function _min() {
+    return Math.min.apply(null, arguments);
+}
+function _max() {
+    return Math.max.apply(null, arguments);
+}
+function _range(n) {
+    const a = [];
+    for (let i = 0; i < n; i++) a.push(i);
+    return a;
+}
+
+const _KEY_MAP = {
+    left: 37,
+    right: 39,
+    up: 38,
+    down: 40,
+    space: 32,
+    enter: 13,
+    escape: 27,
+    tab: 9,
+    shift: 16,
+    ctrl: 17,
+    alt: 18,
+    a: 65,
+    b: 66,
+    c: 67,
+    d: 68,
+    e: 69,
+    f: 70,
+    g: 71,
+    h: 72,
+    i: 73,
+    j: 74,
+    k: 75,
+    l: 76,
+    m: 77,
+    n: 78,
+    o: 79,
+    p: 80,
+    q: 81,
+    r: 82,
+    s: 83,
+    t: 84,
+    u: 85,
+    v: 86,
+    w: 87,
+    x: 88,
+    y: 89,
+    z: 90,
+    0: 48,
+    1: 49,
+    2: 50,
+    3: 51,
+    4: 52,
+    5: 53,
+    6: 54,
+    7: 55,
+    8: 56,
+    9: 57,
+};
+let _key_down_rt = null;
+function _key_down(name) {
+    if (!_key_down_rt) return false;
+    const code = _KEY_MAP[name];
+    return code !== undefined && _key_down_rt.isKeyDown(code);
+}
+
+class SlopVec3 {
+    constructor(onChange, x, y, z) {
+        this._x = x || 0;
+        this._y = y || 0;
+        this._z = z || 0;
+        this._cb = onChange;
+    }
+    get x() {
+        return this._x;
+    }
+    set x(v) {
+        this._x = v;
+        this._cb(this);
+    }
+    get y() {
+        return this._y;
+    }
+    set y(v) {
+        this._y = v;
+        this._cb(this);
+    }
+    get z() {
+        return this._z;
+    }
+    set z(v) {
+        this._z = v;
+        this._cb(this);
+    }
+    setAll(x, y, z) {
+        this._x = x;
+        this._y = y;
+        this._z = z;
+        this._cb(this);
+    }
+}
+
+class SlopObject {
+    constructor(rt, id) {
+        this._rt = rt;
+        this._id = id;
+        this._alpha = 1;
+        this._active = true;
+        this.position = new SlopVec3(v => rt._objectPosition(id, v._x, v._y, v._z));
+        this.rotation = new SlopVec3(v => rt._objectRotation(id, v._x, v._y, v._z));
+        this.scale = new SlopVec3(v => rt._objectScale(id, v._x, v._y, v._z), 1, 1, 1);
+        this.color = new SlopVec3(v => rt._objectColor(id, v._x, v._y, v._z), 1, 1, 1);
+    }
+    get id() {
+        return this._id;
+    }
+    get alpha() {
+        return this._alpha;
+    }
+    set alpha(v) {
+        this._alpha = v;
+        this._rt._objectAlpha(this._id, v);
+    }
+    get active() {
+        return this._active;
+    }
+    set active(v) {
+        this._active = v;
+        this._rt._objectActive(this._id, v ? 1 : 0);
+    }
+}
+
+class SlopLight {
+    constructor(rt, id, type) {
+        this._rt = rt;
+        this._id = id;
+        this._type = type;
+        this._range = 10;
+        this._innerAngle = 30;
+        this._outerAngle = 45;
+        this.color = new SlopVec3(() => this._flush(), 1, 1, 1);
+        this.position = new SlopVec3(() => this._flush());
+        this.direction = new SlopVec3(() => this._flush(), 0, -1, 0);
+    }
+    get id() {
+        return this._id;
+    }
+    get range() {
+        return this._range;
+    }
+    set range(v) {
+        this._range = v;
+        this._flush();
+    }
+    get inner_angle() {
+        return this._innerAngle;
+    }
+    set inner_angle(v) {
+        this._innerAngle = v;
+        this._flush();
+    }
+    get outer_angle() {
+        return this._outerAngle;
+    }
+    set outer_angle(v) {
+        this._outerAngle = v;
+        this._flush();
+    }
+    _flush() {
+        const c = this.color,
+            p = this.position,
+            d = this.direction;
+        switch (this._type) {
+            case 'ambient':
+                this._rt._lightAmbient(this._id, c._x, c._y, c._z);
+                break;
+            case 'directional':
+                this._rt._lightDirectional(this._id, c._x, c._y, c._z, d._x, d._y, d._z);
+                break;
+            case 'point':
+                this._rt._lightPoint(this._id, c._x, c._y, c._z, p._x, p._y, p._z, this._range);
+                break;
+            case 'spot':
+                this._rt._lightSpot(
+                    this._id,
+                    c._x,
+                    c._y,
+                    c._z,
+                    p._x,
+                    p._y,
+                    p._z,
+                    d._x,
+                    d._y,
+                    d._z,
+                    this._range,
+                    this._innerAngle,
+                    this._outerAngle
+                );
+                break;
+        }
+    }
+}
+
+class SlopCamera {
+    constructor(rt, id) {
+        this._rt = rt;
+        this._id = id;
+        this._fov = 60;
+        this._near = 0.1;
+        this._far = 100;
+        this.position = new SlopVec3(v => rt._cameraPos(id, v._x, v._y, v._z));
+        this.target = new SlopVec3(v => rt._cameraTarget(id, v._x, v._y, v._z));
+    }
+    get id() {
+        return this._id;
+    }
+    get fov() {
+        return this._fov;
+    }
+    set fov(v) {
+        this._fov = v;
+        this._rt._cameraSetFov(this._id, v);
+    }
+    get near() {
+        return this._near;
+    }
+    set near(v) {
+        this._near = v;
+        this._rt._cameraSetClip(this._id, this._near, this._far);
+    }
+    get far() {
+        return this._far;
+    }
+    set far(v) {
+        this._far = v;
+        this._rt._cameraSetClip(this._id, this._near, this._far);
+    }
+}
+
+class SlopRuntime {
     constructor(canvasId) {
         this.canvas = document.getElementById(canvasId);
         this.ctx = this.canvas.getContext('2d');
         this.module = null;
         this._animFrameId = null;
-        this._onUpdate = null;
+        this.assets = { meshes: {}, textures: {} };
+        this.scenes = {};
+        this._activeScene = null;
+        this._sceneObjects = [];
+        this._sceneLights = [];
+        this._sceneCameras = [];
+        this._scope = null;
+        this.t = 0;
+        this.dt = 0;
+        this._startTime = 0;
+        this._lastTime = 0;
     }
 
     async init() {
@@ -32,7 +311,6 @@ class Slop3D {
         this._cameraSetClip = this.module.cwrap('s3d_camera_set_clip', null, ['number', 'number', 'number']);
         this._cameraActivate = this.module.cwrap('s3d_camera_activate', null, ['number']);
         this._cameraOff = this.module.cwrap('s3d_camera_off', null, ['number']);
-        this._cameraGetActive = this.module.cwrap('s3d_camera_get_active', 'number', []);
         this._textureCreate = this.module.cwrap('s3d_texture_create', 'number', ['number', 'number']);
         this._textureGetDataPtr = this.module.cwrap('s3d_texture_get_data_ptr', 'number', ['number']);
         this._meshLoadObj = this.module.cwrap('s3d_mesh_load_obj', 'number', ['number', 'number']);
@@ -121,40 +399,8 @@ class Slop3D {
         });
     }
 
-    setClearColor(r, g, b, a = 255) {
-        this._clearColor(r, g, b, a);
-    }
-
-    createCamera(px, py, pz, tx, ty, tz) {
-        return this._cameraCreate(px, py, pz, tx, ty, tz);
-    }
-
-    destroyCamera(id) {
-        this._cameraDestroy(id);
-    }
-
-    setCameraPos(id, x, y, z) {
-        this._cameraPos(id, x, y, z);
-    }
-
-    setCameraTarget(id, x, y, z) {
-        this._cameraTarget(id, x, y, z);
-    }
-
-    setCameraFov(id, degrees) {
-        this._cameraSetFov(id, degrees);
-    }
-
-    setCameraClip(id, near, far) {
-        this._cameraSetClip(id, near, far);
-    }
-
-    setCameraActive(id) {
-        this._cameraActivate(id);
-    }
-
-    setCameraOff(id) {
-        this._cameraOff(id);
+    isKeyDown(keyCode) {
+        return keyCode >= 0 && keyCode < 256 && this._keys[keyCode] === 1;
     }
 
     async loadTexture(url) {
@@ -195,441 +441,20 @@ class Slop3D {
         return meshId;
     }
 
-    createObject(meshId, textureId = -1) {
-        return this._objectCreate(meshId, textureId);
-    }
-
-    destroyObject(objectId) {
-        this._objectDestroy(objectId);
-    }
-
-    setObjectPosition(id, x, y, z) {
-        this._objectPosition(id, x, y, z);
-    }
-
-    setObjectRotation(id, rx, ry, rz) {
-        this._objectRotation(id, rx, ry, rz);
-    }
-
-    setObjectScale(id, sx, sy, sz) {
-        this._objectScale(id, sx, sy, sz);
-    }
-
-    setObjectColor(id, r, g, b) {
-        this._objectColor(id, r, g, b);
-    }
-
-    setObjectAlpha(id, a) {
-        this._objectAlpha(id, a);
-    }
-
-    setObjectActive(id, active) {
-        this._objectActive(id, active);
-    }
-
-    setLightAmbient(id, r, g, b) {
-        this._lightAmbient(id, r, g, b);
-    }
-
-    setLightDirectional(id, r, g, b, dx, dy, dz) {
-        this._lightDirectional(id, r, g, b, dx, dy, dz);
-    }
-
-    setLightPoint(id, r, g, b, x, y, z, range) {
-        this._lightPoint(id, r, g, b, x, y, z, range);
-    }
-
-    setLightSpot(id, r, g, b, x, y, z, dx, dy, dz, range, innerDeg, outerDeg) {
-        this._lightSpot(id, r, g, b, x, y, z, dx, dy, dz, range, innerDeg, outerDeg);
-    }
-
-    setLightOff(id) {
-        this._lightOff(id);
-    }
-
-    setFog(enabled, r, g, b, start, end) {
-        this._fogSet(enabled ? 1 : 0, r, g, b, start, end);
-    }
-
-    isKeyDown(keyCode) {
-        return keyCode >= 0 && keyCode < 256 && this._keys[keyCode] === 1;
-    }
-
-    mouseX() {
-        return this._mouseX;
-    }
-
-    mouseY() {
-        return this._mouseY;
-    }
-
-    mouseButton(n) {
-        return (this._mouseButtons & (1 << n)) !== 0;
-    }
-
-    renderScene() {
-        this._renderScene();
-    }
-
-    onUpdate(callback) {
-        this._onUpdate = callback;
-    }
-
-    start() {
-        this._lastTime = performance.now();
-        this._frameCount = 0;
-        this._fpsAccum = 0;
-        this._fpsDisplay = 0;
-        this._ftDisplay = 0;
-
-        const fpsEl = document.getElementById('fps');
-        const ftEl = document.getElementById('frametime');
-        const frameInterval = 1000 / 30; /* ~30fps */
-        this._nextFrame = this._lastTime + frameInterval;
-
-        const render = () => {
-            this._animFrameId = requestAnimationFrame(render);
-
-            const now = performance.now();
-            if (now < this._nextFrame) return;
-            this._nextFrame += frameInterval;
-            if (this._nextFrame < now) this._nextFrame = now + frameInterval;
-            const dt = now - this._lastTime;
-            this._lastTime = now;
-
-            this._frameCount++;
-            this._fpsAccum += dt;
-            if (this._fpsAccum >= 500) {
-                this._fpsDisplay = (this._frameCount / this._fpsAccum) * 1000;
-                this._ftDisplay = this._fpsAccum / this._frameCount;
-                this._frameCount = 0;
-                this._fpsAccum = 0;
-                if (fpsEl) fpsEl.textContent = 'FPS: ' + this._fpsDisplay.toFixed(1);
-                if (ftEl) ftEl.textContent = 'Frame: ' + this._ftDisplay.toFixed(2) + ' ms';
-            }
-
-            this._frameBegin();
-
-            if (this._onUpdate) {
-                this._onUpdate();
-            }
-
-            const fbPtr = this._getFramebuffer();
-            const pixels = this.module.HEAPU8.subarray(fbPtr, fbPtr + this.width * this.height * 4);
-            this.imageData.data.set(pixels);
-            this.ctx.putImageData(this.imageData, 0, 0);
-        };
-        this._animFrameId = requestAnimationFrame(render);
-    }
-
-    stop() {
-        if (this._animFrameId !== null) {
-            cancelAnimationFrame(this._animFrameId);
-            this._animFrameId = null;
-        }
-    }
-}
-
-// ============================================================
-// SlopScript — DSL transpiler for slop3d
-// ============================================================
-
-// --- Phase 1: Runtime Helpers ---
-
-const _DEG = Math.PI / 180;
-function _sin(d) {
-    return Math.sin(d * _DEG);
-}
-function _cos(d) {
-    return Math.cos(d * _DEG);
-}
-function _tan(d) {
-    return Math.tan(d * _DEG);
-}
-function _lerp(a, b, t) {
-    return a + (b - a) * t;
-}
-function _clamp(v, lo, hi) {
-    return Math.min(Math.max(v, lo), hi);
-}
-function _random() {
-    return Math.random();
-}
-function _abs(v) {
-    return Math.abs(v);
-}
-function _min() {
-    return Math.min.apply(null, arguments);
-}
-function _max() {
-    return Math.max.apply(null, arguments);
-}
-function _range(n) {
-    const a = [];
-    for (let i = 0; i < n; i++) a.push(i);
-    return a;
-}
-
-const _KEY_MAP = {
-    left: 37,
-    right: 39,
-    up: 38,
-    down: 40,
-    space: 32,
-    enter: 13,
-    escape: 27,
-    tab: 9,
-    shift: 16,
-    ctrl: 17,
-    alt: 18,
-    a: 65,
-    b: 66,
-    c: 67,
-    d: 68,
-    e: 69,
-    f: 70,
-    g: 71,
-    h: 72,
-    i: 73,
-    j: 74,
-    k: 75,
-    l: 76,
-    m: 77,
-    n: 78,
-    o: 79,
-    p: 80,
-    q: 81,
-    r: 82,
-    s: 83,
-    t: 84,
-    u: 85,
-    v: 86,
-    w: 87,
-    x: 88,
-    y: 89,
-    z: 90,
-    0: 48,
-    1: 49,
-    2: 50,
-    3: 51,
-    4: 52,
-    5: 53,
-    6: 54,
-    7: 55,
-    8: 56,
-    9: 57,
-};
-let _key_down_engine = null;
-function _key_down(name) {
-    if (!_key_down_engine) return false;
-    const code = _KEY_MAP[name];
-    return code !== undefined && _key_down_engine.isKeyDown(code);
-}
-
-class SlopVec3 {
-    constructor(onChange, x, y, z) {
-        this._x = x || 0;
-        this._y = y || 0;
-        this._z = z || 0;
-        this._cb = onChange;
-    }
-    get x() {
-        return this._x;
-    }
-    set x(v) {
-        this._x = v;
-        this._cb(this);
-    }
-    get y() {
-        return this._y;
-    }
-    set y(v) {
-        this._y = v;
-        this._cb(this);
-    }
-    get z() {
-        return this._z;
-    }
-    set z(v) {
-        this._z = v;
-        this._cb(this);
-    }
-    setAll(x, y, z) {
-        this._x = x;
-        this._y = y;
-        this._z = z;
-        this._cb(this);
-    }
-}
-
-class SlopObject {
-    constructor(engine, id) {
-        this._e = engine;
-        this._id = id;
-        this._alpha = 1;
-        this._active = true;
-        const e = engine,
-            oid = id;
-        this.position = new SlopVec3(v => e.setObjectPosition(oid, v._x, v._y, v._z));
-        this.rotation = new SlopVec3(v => e.setObjectRotation(oid, v._x, v._y, v._z));
-        this.scale = new SlopVec3(v => e.setObjectScale(oid, v._x, v._y, v._z), 1, 1, 1);
-        this.color = new SlopVec3(v => e.setObjectColor(oid, v._x, v._y, v._z), 1, 1, 1);
-    }
-    get id() {
-        return this._id;
-    }
-    get alpha() {
-        return this._alpha;
-    }
-    set alpha(v) {
-        this._alpha = v;
-        this._e.setObjectAlpha(this._id, v);
-    }
-    get active() {
-        return this._active;
-    }
-    set active(v) {
-        this._active = v;
-        this._e.setObjectActive(this._id, v ? 1 : 0);
-    }
-}
-
-class SlopLight {
-    constructor(engine, id, type) {
-        this._e = engine;
-        this._id = id;
-        this._type = type;
-        this._range = 10;
-        this._innerAngle = 30;
-        this._outerAngle = 45;
-        this.color = new SlopVec3(() => this._flush(), 1, 1, 1);
-        this.position = new SlopVec3(() => this._flush());
-        this.direction = new SlopVec3(() => this._flush(), 0, -1, 0);
-    }
-    get id() {
-        return this._id;
-    }
-    get range() {
-        return this._range;
-    }
-    set range(v) {
-        this._range = v;
-        this._flush();
-    }
-    get inner_angle() {
-        return this._innerAngle;
-    }
-    set inner_angle(v) {
-        this._innerAngle = v;
-        this._flush();
-    }
-    get outer_angle() {
-        return this._outerAngle;
-    }
-    set outer_angle(v) {
-        this._outerAngle = v;
-        this._flush();
-    }
-    _flush() {
-        const c = this.color,
-            p = this.position,
-            d = this.direction;
-        switch (this._type) {
-            case 'ambient':
-                this._e.setLightAmbient(this._id, c._x, c._y, c._z);
-                break;
-            case 'directional':
-                this._e.setLightDirectional(this._id, c._x, c._y, c._z, d._x, d._y, d._z);
-                break;
-            case 'point':
-                this._e.setLightPoint(this._id, c._x, c._y, c._z, p._x, p._y, p._z, this._range);
-                break;
-            case 'spot':
-                this._e.setLightSpot(
-                    this._id,
-                    c._x,
-                    c._y,
-                    c._z,
-                    p._x,
-                    p._y,
-                    p._z,
-                    d._x,
-                    d._y,
-                    d._z,
-                    this._range,
-                    this._innerAngle,
-                    this._outerAngle
-                );
-                break;
-        }
-    }
-}
-
-class SlopCamera {
-    constructor(engine, id) {
-        this._e = engine;
-        this._id = id;
-        this._fov = 60;
-        this._near = 0.1;
-        this._far = 100;
-        this.position = new SlopVec3(v => this._e.setCameraPos(this._id, v._x, v._y, v._z));
-        this.target = new SlopVec3(v => this._e.setCameraTarget(this._id, v._x, v._y, v._z));
-    }
-    get id() {
-        return this._id;
-    }
-    get fov() {
-        return this._fov;
-    }
-    set fov(v) {
-        this._fov = v;
-        this._e.setCameraFov(this._id, v);
-    }
-    get near() {
-        return this._near;
-    }
-    set near(v) {
-        this._near = v;
-        this._e.setCameraClip(this._id, this._near, this._far);
-    }
-    get far() {
-        return this._far;
-    }
-    set far(v) {
-        this._far = v;
-        this._e.setCameraClip(this._id, this._near, this._far);
-    }
-}
-
-class SlopRuntime {
-    constructor(engine) {
-        this._e = engine;
-        this.assets = { meshes: {}, textures: {} };
-        this.scenes = {};
-        this._activeScene = null;
-        this._sceneObjects = [];
-        this._sceneLights = [];
-        this._sceneCameras = [];
-        this._scope = null;
-        this.t = 0;
-        this.dt = 0;
-        this._startTime = 0;
-        this._lastTime = 0;
-    }
     spawn(meshName, texName) {
         const mid = this.assets.meshes[meshName];
         const tid = texName ? this.assets.textures[texName] : -1;
-        const oid = this._e.createObject(mid, tid);
-        const obj = new SlopObject(this._e, oid);
+        const oid = this._objectCreate(mid, tid);
+        const obj = new SlopObject(this, oid);
         this._sceneObjects.push(obj);
         return obj;
     }
     kill(target) {
         if (target instanceof SlopCamera) {
-            this._e.destroyCamera(target.id);
+            this._cameraDestroy(target.id);
             this._sceneCameras[target.id] = null;
         } else {
-            this._e.destroyObject(target.id);
+            this._objectDestroy(target.id);
             const i = this._sceneObjects.indexOf(target);
             if (i >= 0) this._sceneObjects.splice(i, 1);
         }
@@ -643,7 +468,7 @@ class SlopRuntime {
             }
         }
         if (id < 0) throw new Error('No free light slots');
-        const l = new SlopLight(this._e, id, type);
+        const l = new SlopLight(this, id, type);
         if (type === 'ambient') {
             if (args.length >= 3) l.color.setAll(args[0], args[1], args[2]);
         } else if (type === 'directional') {
@@ -674,9 +499,9 @@ class SlopRuntime {
         const tx = args.length >= 6 ? args[3] : 0,
             ty = args.length >= 6 ? args[4] : 0,
             tz = args.length >= 6 ? args[5] : 0;
-        const id = this._e.createCamera(px, py, pz, tx, ty, tz);
+        const id = this._cameraCreate(px, py, pz, tx, ty, tz);
         if (id < 0) throw new Error('No free camera slots');
-        const cam = new SlopCamera(this._e, id);
+        const cam = new SlopCamera(this, id);
         cam.position._x = px;
         cam.position._y = py;
         cam.position._z = pz;
@@ -685,20 +510,20 @@ class SlopRuntime {
         cam.target._z = tz;
         this._sceneCameras[id] = cam;
         if (this._sceneCameras.filter(Boolean).length === 1) {
-            this._e.setCameraActive(id);
+            this._cameraActivate(id);
         }
         return cam;
     }
     use(target) {
         if (target instanceof SlopCamera) {
-            this._e.setCameraActive(target.id);
+            this._cameraActivate(target.id);
         }
     }
     off(target) {
         if (target instanceof SlopCamera) {
-            this._e.setCameraOff(target.id);
+            this._cameraOff(target.id);
         } else if (target instanceof SlopLight) {
-            this._e.setLightOff(target.id);
+            this._lightOff(target.id);
             this._sceneLights[target.id] = null;
         } else if (target instanceof SlopObject) {
             target.active = false;
@@ -706,7 +531,7 @@ class SlopRuntime {
     }
     on(target) {
         if (target instanceof SlopCamera) {
-            this._e.setCameraActive(target.id);
+            this._cameraActivate(target.id);
         } else if (target instanceof SlopLight) {
             this._sceneLights[target.id] = target;
             target._flush();
@@ -715,33 +540,33 @@ class SlopRuntime {
         }
     }
     sky(r, g, b) {
-        this._e.setClearColor(Math.round(r * 255), Math.round(g * 255), Math.round(b * 255));
+        this._clearColor(Math.round(r * 255), Math.round(g * 255), Math.round(b * 255), 255);
     }
     fog(r, g, b, start, end) {
-        this._e.setFog(true, r, g, b, start, end);
+        this._fogSet(1, r, g, b, start, end);
     }
     get mouse_x() {
-        return this._e._mouseX;
+        return this._mouseX;
     }
     get mouse_y() {
-        return this._e._mouseY;
+        return this._mouseY;
     }
     get mouse_left() {
-        return this._e.mouseButton(0);
+        return (this._mouseButtons & 1) !== 0;
     }
     get mouse_right() {
-        return this._e.mouseButton(2);
+        return (this._mouseButtons & 4) !== 0;
     }
     gotoScene(name) {
-        for (const obj of this._sceneObjects) this._e.destroyObject(obj.id);
+        for (const obj of this._sceneObjects) this._objectDestroy(obj.id);
         this._sceneObjects = [];
         for (let i = 0; i < 8; i++) {
             if (this._sceneLights[i]) {
-                this._e.setLightOff(i);
+                this._lightOff(i);
                 this._sceneLights[i] = null;
             }
             if (this._sceneCameras[i]) {
-                this._e.destroyCamera(i);
+                this._cameraDestroy(i);
                 this._sceneCameras[i] = null;
             }
         }
@@ -753,21 +578,63 @@ class SlopRuntime {
         this._startTime = performance.now();
         this._lastTime = this._startTime;
         this.gotoScene(this._firstScene);
-        this._e.onUpdate(() => this._tick());
-        this._e.start();
+
+        this._frameCount = 0;
+        this._fpsAccum = 0;
+        this._fpsDisplay = 0;
+        this._ftDisplay = 0;
+
+        const fpsEl = document.getElementById('fps');
+        const ftEl = document.getElementById('frametime');
+        const frameInterval = 1000 / 30;
+        this._nextFrame = this._lastTime + frameInterval;
+
+        const render = () => {
+            this._animFrameId = requestAnimationFrame(render);
+
+            const now = performance.now();
+            if (now < this._nextFrame) return;
+            this._nextFrame += frameInterval;
+            if (this._nextFrame < now) this._nextFrame = now + frameInterval;
+
+            this.dt = (now - this._lastTime) / 1000;
+            this.t = (now - this._startTime) / 1000;
+            this._lastTime = now;
+
+            this._frameCount++;
+            this._fpsAccum += this.dt * 1000;
+            if (this._fpsAccum >= 500) {
+                this._fpsDisplay = (this._frameCount / this._fpsAccum) * 1000;
+                this._ftDisplay = this._fpsAccum / this._frameCount;
+                this._frameCount = 0;
+                this._fpsAccum = 0;
+                if (fpsEl) fpsEl.textContent = 'FPS: ' + this._fpsDisplay.toFixed(1);
+                if (ftEl) ftEl.textContent = 'Frame: ' + this._ftDisplay.toFixed(2) + ' ms';
+            }
+
+            this._frameBegin();
+
+            const scene = this.scenes[this._activeScene];
+            if (scene.update) scene.update(this._scope);
+            this._renderScene();
+
+            const fbPtr = this._getFramebuffer();
+            const pixels = this.module.HEAPU8.subarray(fbPtr, fbPtr + this.width * this.height * 4);
+            this.imageData.data.set(pixels);
+            this.ctx.putImageData(this.imageData, 0, 0);
+        };
+        this._animFrameId = requestAnimationFrame(render);
     }
-    _tick() {
-        const now = performance.now();
-        this.dt = (now - this._lastTime) / 1000;
-        this.t = (now - this._startTime) / 1000;
-        this._lastTime = now;
-        const scene = this.scenes[this._activeScene];
-        if (scene.update) scene.update(this._scope);
-        this._e.renderScene();
+
+    stop() {
+        if (this._animFrameId !== null) {
+            cancelAnimationFrame(this._animFrameId);
+            this._animFrameId = null;
+        }
     }
 }
 
-// --- Phase 2: Lexer ---
+// --- Lexer ---
 
 const TK = {
     INDENT: 'INDENT',
@@ -972,7 +839,7 @@ function slopLex(src) {
     return tokens;
 }
 
-// --- Phase 3: Parser ---
+// --- Parser ---
 
 function slopParse(tokens) {
     let pos = 0;
@@ -1397,7 +1264,7 @@ function slopParse(tokens) {
     return parseProgram();
 }
 
-// --- Phase 4: Code Generator ---
+// --- Code Generator ---
 
 const SLOP_BUILTINS = new Set(['t', 'dt', 'mouse_x', 'mouse_y', 'mouse_left', 'mouse_right']);
 const SLOP_MATH = new Set(['sin', 'cos', 'tan', 'lerp', 'clamp', 'random', 'abs', 'min', 'max', 'range', 'key_down']);
@@ -1415,11 +1282,11 @@ function slopGenerate(ast) {
         const names = [];
         for (const m of ast.assets.models) {
             names.push('_mesh_' + m.name);
-            loads.push(`_e.loadOBJ('assets/${m.path}')`);
+            loads.push(`_rt.loadOBJ('assets/${m.path}')`);
         }
         for (const s of ast.assets.skins) {
             names.push('_tex_' + s.name);
-            loads.push(`_e.loadTexture('assets/${s.path}')`);
+            loads.push(`_rt.loadTexture('assets/${s.path}')`);
         }
         if (loads.length) {
             emit(`const [${names.join(', ')}] = await Promise.all([`);
@@ -1606,12 +1473,11 @@ function slopGenerate(ast) {
     }
 }
 
-// --- Phase 5: Loader ---
+// --- Loader ---
 
 class SlopScript {
-    static async exec(js, engine) {
+    static async exec(js, rt) {
         const fn = new Function(
-            '_e',
             '_rt',
             '_sin',
             '_cos',
@@ -1626,15 +1492,14 @@ class SlopScript {
             '_key_down',
             'return (async function(){' + js + '})();'
         );
-        const rt = new SlopRuntime(engine);
-        _key_down_engine = engine;
-        await fn(engine, rt, _sin, _cos, _tan, _lerp, _clamp, _random, _abs, _min, _max, _range, _key_down);
+        _key_down_rt = rt;
+        await fn(rt, _sin, _cos, _tan, _lerp, _clamp, _random, _abs, _min, _max, _range, _key_down);
     }
     static async run(source, canvasId) {
-        const engine = new Slop3D(canvasId);
-        await engine.init();
+        const rt = new SlopRuntime(canvasId);
+        await rt.init();
         const js = slopGenerate(slopParse(slopLex(source)));
-        await SlopScript.exec(js, engine);
+        await SlopScript.exec(js, rt);
     }
     static async load(url, canvasId) {
         const r = await fetch(url);

@@ -8,9 +8,8 @@ slop3d (repo: slopwave3d) is a compact software rasterizer 3D game engine that a
 
 - **C core** (`src/slop3d.c`) — software rasterizer, no GPU APIs
 - **WASM bridge** — compiled via Emscripten, exports C functions to JS
-- **JS API** (`js/slop3d.js`) — `Slop3D` class wrapping WASM calls, canvas blitting, asset loading
-- **SlopScript** (`js/slop3d.js`) — custom DSL transpiler, runtime helpers, and browser loader (appended to same file)
-- **Browser delivery** — `web/index.html` hosts the engine, games are scripted in SlopScript or JS
+- **SlopScript** (`js/slop3d.js`) — custom DSL transpiler, `SlopRuntime` (WASM bindings, canvas blitting, asset loading, scene management), and browser loader — all in one file
+- **Browser delivery** — `web/index.html` hosts the engine, games are scripted exclusively in SlopScript (no public JS API)
 
 This mirrors Shockwave 3D's own architecture: compiled engine + scripting layer (Lingo → SlopScript).
 
@@ -89,7 +88,7 @@ Outputs `web/slop3d_wasm.js` and `web/slop3d_wasm.wasm`. Open `http://localhost:
 
 ## SlopScript
 
-SlopScript is a custom DSL (`.slop` extension) that transpiles to JS targeting the Slop3D API. It parallels how Shockwave 3D had Lingo. The transpiler runs in the browser with no build step.
+SlopScript is a custom DSL (`.slop` extension) that transpiles to JS targeting the `SlopRuntime` internals. It parallels how Shockwave 3D had Lingo. The transpiler runs in the browser with no build step. SlopScript is the only way to use the engine — there is no public JS API.
 
 ### Syntax Overview
 

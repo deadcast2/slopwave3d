@@ -116,8 +116,6 @@ Or write inline — no build step, no bundler, no quotes, no semicolons, no pare
 - **`kill:`** — destroy objects: `kill: box`
 - Control flow: `if`/`elif`/`else`, `while`, `for/in`, `fn`, `return`
 
-You can also use the JS API directly if you prefer — see [`js/slop3d.js`](js/slop3d.js) for the `Slop3D` class.
-
 ## Why?
 
 - The entire engine fits in an AI context window (~20K tokens). Every line is visible, every function is reachable.

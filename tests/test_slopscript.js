@@ -5,9 +5,8 @@ const path = require('path');
 
 // Load SlopScript functions from slop3d.js
 const src = fs.readFileSync(path.join(__dirname, '..', 'js', 'slop3d.js'), 'utf8');
-// Strip browser-only code, wrap in a function to capture class declarations
+// Strip browser-only code
 const stripped = src
-    .replace(/^class Slop3D \{[\s\S]*?^}/m, '')
     .replace(/if \(typeof document[\s\S]*$/, '')
     .replace(/class SlopScript \{[\s\S]*?^\}/m, '');
 const mod = new Function(
@@ -422,6 +421,12 @@ describe('CodeGen', () => {
         assert.ok(js.includes('_rt.sky(0.2, 0.1, 0.3)'));
     });
 
+    it('generates asset loads via _rt', () => {
+        const js = gen('assets\n    model cube = cube.obj\n    skin crate = crate.jpg\nscene main\n    x = 1\n');
+        assert.ok(js.includes("_rt.loadOBJ('assets/cube.obj')"));
+        assert.ok(js.includes("_rt.loadTexture('assets/crate.jpg')"));
+    });
+
     it('full spinning cube generates valid structure', () => {
         const js = gen(
             'assets\n    model cube = cube.obj\nscene main\n    box = spawn: cube\n    cam = camera: 0, 1.5, 5\n    update\n        box.rotation.y = t * 30\n'
@@ -482,24 +487,24 @@ describe('Runtime helpers', () => {
 
     it('SlopLight flushes on color change', () => {
         let lastCall = null;
-        const fakeEngine = {
-            setLightAmbient: (id, r, g, b) => {
+        const fakeRt = {
+            _lightAmbient: (id, r, g, b) => {
                 lastCall = { id, r, g, b };
             },
         };
-        const l = new SlopLight(fakeEngine, 0, 'ambient');
+        const l = new SlopLight(fakeRt, 0, 'ambient');
         l.color.setAll(0.5, 0.6, 0.7);
         assert.deepEqual(lastCall, { id: 0, r: 0.5, g: 0.6, b: 0.7 });
     });
 
     it('SlopLight flushes on position change for point light', () => {
         let lastCall = null;
-        const fakeEngine = {
-            setLightPoint: (id, r, g, b, x, y, z, range) => {
+        const fakeRt = {
+            _lightPoint: (id, r, g, b, x, y, z, range) => {
                 lastCall = { id, x, y, z, range };
             },
         };
-        const l = new SlopLight(fakeEngine, 2, 'point');
+        const l = new SlopLight(fakeRt, 2, 'point');
         l._range = 15;
         l.position.setAll(1, 2, 3);
         assert.equal(lastCall.id, 2);
@@ -511,12 +516,12 @@ describe('Runtime helpers', () => {
 
     it('SlopLight flushes on range setter', () => {
         let callCount = 0;
-        const fakeEngine = {
-            setLightPoint: () => {
+        const fakeRt = {
+            _lightPoint: () => {
                 callCount++;
             },
         };
-        const l = new SlopLight(fakeEngine, 0, 'point');
+        const l = new SlopLight(fakeRt, 0, 'point');
         callCount = 0;
         l.range = 20;
         assert.equal(l.range, 20);
@@ -525,12 +530,12 @@ describe('Runtime helpers', () => {
 
     it('SlopLight directional flushes with direction', () => {
         let lastCall = null;
-        const fakeEngine = {
-            setLightDirectional: (id, r, g, b, dx, dy, dz) => {
+        const fakeRt = {
+            _lightDirectional: (id, r, g, b, dx, dy, dz) => {
                 lastCall = { id, r, g, b, dx, dy, dz };
             },
         };
-        const l = new SlopLight(fakeEngine, 1, 'directional');
+        const l = new SlopLight(fakeRt, 1, 'directional');
         l.direction.setAll(-1, -1, 0);
         assert.equal(lastCall.id, 1);
         assert.equal(lastCall.dx, -1);
