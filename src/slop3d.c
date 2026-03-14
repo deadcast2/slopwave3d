@@ -1,5 +1,6 @@
 #include "slop3d.h"
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #ifdef __EMSCRIPTEN__
@@ -10,9 +11,18 @@
 #endif
 #endif
 
+/* ── constants ───────────────────────────────────────────────────────── */
+
+#define S3D_PI 3.14159265358979323846f
+#define S3D_EPSILON 1e-8f
+#define S3D_DEGENERATE_HEIGHT 0.001f
+#define S3D_MIN_SPAN 1e-6f
+#define S3D_MAX_FACE_VERTS 32
+#define S3D_PACK_RGBA(r, g, b, a) ((uint32_t)(r) | ((uint32_t)(g) << 8) | ((uint32_t)(b) << 16) | ((uint32_t)(a) << 24))
+
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
-static inline float deg_to_rad(float deg) { return deg * 3.14159265358979323846f / 180.0f; }
+static inline float deg_to_rad(float deg) { return deg * S3D_PI / 180.0f; }
 
 /* ── vec3 ────────────────────────────────────────────────────────────── */
 
@@ -36,7 +46,7 @@ static inline float v3_length(S3D_Vec3 v) { return sqrtf(v3_dot(v, v)); }
 
 static inline S3D_Vec3 v3_normalize(S3D_Vec3 v) {
     float len = v3_length(v);
-    if (len < 1e-8f) return s3d_vec3(0, 0, 0);
+    if (len < S3D_EPSILON) return s3d_vec3(0, 0, 0);
     float inv = 1.0f / len;
     return s3d_vec3(v.x * inv, v.y * inv, v.z * inv);
 }
@@ -180,6 +190,23 @@ static inline S3D_Mat4 m4_inverse_affine(S3D_Mat4 m) {
     return r;
 }
 
+/* ── bounds-check macros ─────────────────────────────────────────────── */
+
+#define S3D_CHECK_CAMERA(id)                                                                                           \
+    if ((id) < 0 || (id) >= S3D_MAX_CAMERAS) return
+#define S3D_CHECK_CAMERA_ACTIVE(id)                                                                                    \
+    if ((id) < 0 || (id) >= S3D_MAX_CAMERAS || !g_engine.cameras[(id)].active) return
+#define S3D_CHECK_OBJECT(id)                                                                                           \
+    if ((id) < 0 || (id) >= S3D_MAX_OBJECTS) return
+#define S3D_CHECK_OBJECT_ACTIVE(id)                                                                                    \
+    if ((id) < 0 || (id) >= S3D_MAX_OBJECTS || !g_engine.objects[(id)].active) return
+#define S3D_CHECK_LIGHT(id)                                                                                            \
+    if ((id) < 0 || (id) >= S3D_MAX_LIGHTS) return
+#define S3D_CHECK_MESH(id)                                                                                             \
+    if ((id) < 0 || (id) >= S3D_MAX_MESHES || !g_engine.meshes[(id)].active) return
+#define S3D_CHECK_TEXTURE(id)                                                                                          \
+    if ((id) < 0 || (id) >= S3D_MAX_TEXTURES || !g_engine.textures[(id)].active) return
+
 /* ── engine state ────────────────────────────────────────────────────── */
 
 typedef struct {
@@ -297,6 +324,42 @@ static inline float clampf(float v, float lo, float hi) {
     return v;
 }
 
+typedef struct {
+    float x, z, r, g, b, u, v, ez;
+} S3D_EdgeVals;
+
+static inline S3D_EdgeVals interpolate_edge(S3D_ScreenVert *a, S3D_ScreenVert *b, float fy) {
+    S3D_EdgeVals e;
+    float h = b->y - a->y;
+    if (h < S3D_DEGENERATE_HEIGHT) {
+        e.x = b->x;
+        e.z = b->z;
+        e.r = b->r;
+        e.g = b->g;
+        e.b = b->b;
+        e.u = b->u;
+        e.v = b->v;
+        e.ez = b->eye_z;
+    } else {
+        float t = clampf((fy - a->y) / h, 0.0f, 1.0f);
+        e.x = a->x + (b->x - a->x) * t;
+        e.z = a->z + (b->z - a->z) * t;
+        e.r = a->r + (b->r - a->r) * t;
+        e.g = a->g + (b->g - a->g) * t;
+        e.b = a->b + (b->b - a->b) * t;
+        e.u = a->u + (b->u - a->u) * t;
+        e.v = a->v + (b->v - a->v) * t;
+        e.ez = a->eye_z + (b->eye_z - a->eye_z) * t;
+    }
+    return e;
+}
+
+static inline void swap_edges(S3D_EdgeVals *a, S3D_EdgeVals *b) {
+    S3D_EdgeVals t = *a;
+    *a = *b;
+    *b = t;
+}
+
 static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1, S3D_ScreenVert v2, int texture_id,
                                    float obj_alpha) {
     S3D_Texture *tex = NULL;
@@ -323,7 +386,7 @@ static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1, S3D_Scr
     }
 
     float total_h = v2.y - v0.y;
-    if (total_h < 0.001f) return;
+    if (total_h < S3D_DEGENERATE_HEIGHT) return;
 
     int y_start = (int)ceilf(v0.y);
     int y_end = (int)ceilf(v2.y) - 1;
@@ -336,128 +399,41 @@ static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1, S3D_Scr
         float fy = (float)y;
 
         /* long edge: v0 → v2 */
-        float t_long = clampf((fy - v0.y) / total_h, 0.0f, 1.0f);
-        float lx = v0.x + (v2.x - v0.x) * t_long;
-        float lz = v0.z + (v2.z - v0.z) * t_long;
-        float lr = v0.r + (v2.r - v0.r) * t_long;
-        float lg = v0.g + (v2.g - v0.g) * t_long;
-        float lb = v0.b + (v2.b - v0.b) * t_long;
-        float lu = v0.u + (v2.u - v0.u) * t_long;
-        float lv = v0.v + (v2.v - v0.v) * t_long;
-        float lez = v0.eye_z + (v2.eye_z - v0.eye_z) * t_long;
+        S3D_EdgeVals le = interpolate_edge(&v0, &v2, fy);
 
         /* short edge */
-        float sx, sz, sr, sg, sb, su, sv, sez;
-        if (fy < v1.y) {
-            float h = v1.y - v0.y;
-            if (h < 0.001f) {
-                sx = v1.x;
-                sz = v1.z;
-                sr = v1.r;
-                sg = v1.g;
-                sb = v1.b;
-                su = v1.u;
-                sv = v1.v;
-                sez = v1.eye_z;
-            } else {
-                float t = clampf((fy - v0.y) / h, 0.0f, 1.0f);
-                sx = v0.x + (v1.x - v0.x) * t;
-                sz = v0.z + (v1.z - v0.z) * t;
-                sr = v0.r + (v1.r - v0.r) * t;
-                sg = v0.g + (v1.g - v0.g) * t;
-                sb = v0.b + (v1.b - v0.b) * t;
-                su = v0.u + (v1.u - v0.u) * t;
-                sv = v0.v + (v1.v - v0.v) * t;
-                sez = v0.eye_z + (v1.eye_z - v0.eye_z) * t;
-            }
-        } else {
-            float h = v2.y - v1.y;
-            if (h < 0.001f) {
-                sx = v2.x;
-                sz = v2.z;
-                sr = v2.r;
-                sg = v2.g;
-                sb = v2.b;
-                su = v2.u;
-                sv = v2.v;
-                sez = v2.eye_z;
-            } else {
-                float t = clampf((fy - v1.y) / h, 0.0f, 1.0f);
-                sx = v1.x + (v2.x - v1.x) * t;
-                sz = v1.z + (v2.z - v1.z) * t;
-                sr = v1.r + (v2.r - v1.r) * t;
-                sg = v1.g + (v2.g - v1.g) * t;
-                sb = v1.b + (v2.b - v1.b) * t;
-                su = v1.u + (v2.u - v1.u) * t;
-                sv = v1.v + (v2.v - v1.v) * t;
-                sez = v1.eye_z + (v2.eye_z - v1.eye_z) * t;
-            }
-        }
+        S3D_EdgeVals se = (fy < v1.y) ? interpolate_edge(&v0, &v1, fy) : interpolate_edge(&v1, &v2, fy);
 
         /* ensure left-to-right */
-        float xl = lx, xr = sx;
-        float zl = lz, zr = sz;
-        float rl = lr, rr = sr;
-        float gl = lg, gr = sg;
-        float bl = lb, br = sb;
-        float ul = lu, ur = su;
-        float vl = lv, vr = sv;
-        float ezl = lez, ezr = sez;
-        if (xl > xr) {
-            float t;
-            t = xl;
-            xl = xr;
-            xr = t;
-            t = zl;
-            zl = zr;
-            zr = t;
-            t = rl;
-            rl = rr;
-            rr = t;
-            t = gl;
-            gl = gr;
-            gr = t;
-            t = bl;
-            bl = br;
-            br = t;
-            t = ul;
-            ul = ur;
-            ur = t;
-            t = vl;
-            vl = vr;
-            vr = t;
-            t = ezl;
-            ezl = ezr;
-            ezr = t;
-        }
+        if (le.x > se.x) swap_edges(&le, &se);
 
-        int ix_start = (int)ceilf(xl);
-        int ix_end = (int)ceilf(xr) - 1;
+        int ix_start = (int)ceilf(le.x);
+        int ix_end = (int)ceilf(se.x) - 1;
         if (ix_start < 0) ix_start = 0;
         if (ix_end >= S3D_WIDTH) ix_end = S3D_WIDTH - 1;
 
-        float span = xr - xl;
-        if (span < 1e-6f) continue;
+        float span = se.x - le.x;
+        if (span < S3D_MIN_SPAN) continue;
         float inv_span = 1.0f / span;
 
         /* precompute per-scanline step values */
-        float dz = (zr - zl) * inv_span;
-        float dr = (rr - rl) * inv_span;
-        float dg = (gr - gl) * inv_span;
-        float db = (br - bl) * inv_span;
-        float du = (ur - ul) * inv_span;
-        float dv = (vr - vl) * inv_span;
-        float dez = (ezr - ezl) * inv_span;
+        float dz = (se.z - le.z) * inv_span;
+        float dr = (se.r - le.r) * inv_span;
+        float dg = (se.g - le.g) * inv_span;
+        float db = (se.b - le.b) * inv_span;
+        float du = (se.u - le.u) * inv_span;
+        float dv = (se.v - le.v) * inv_span;
+        float dez = (se.ez - le.ez) * inv_span;
 
         /* initial values at ix_start */
-        float s0 = ((float)ix_start + 0.5f - xl) * inv_span;
-        float z = zl + (zr - zl) * s0;
-        float cr_f = rl + (rr - rl) * s0;
-        float cg_f = gl + (gr - gl) * s0;
-        float cb_f = bl + (br - bl) * s0;
-        float cu = ul + (ur - ul) * s0;
-        float cv = vl + (vr - vl) * s0;
-        float ez = ezl + (ezr - ezl) * s0;
+        float s0 = ((float)ix_start + 0.5f - le.x) * inv_span;
+        float z = le.z + (se.z - le.z) * s0;
+        float cr_f = le.r + (se.r - le.r) * s0;
+        float cg_f = le.g + (se.g - le.g) * s0;
+        float cb_f = le.b + (se.b - le.b) * s0;
+        float cu = le.u + (se.u - le.u) * s0;
+        float cv = le.v + (se.v - le.v) * s0;
+        float ez = le.ez + (se.ez - le.ez) * s0;
 
         int row_offset = y * S3D_WIDTH;
 
@@ -484,7 +460,7 @@ static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1, S3D_Scr
                 if (g_engine.fog.enabled) {
                     float fog_range = g_engine.fog.end - g_engine.fog.start;
                     float fog_t =
-                        (fog_range > 1e-6f) ? clampf((ez - g_engine.fog.start) / fog_range, 0.0f, 1.0f) : 0.0f;
+                        (fog_range > S3D_MIN_SPAN) ? clampf((ez - g_engine.fog.start) / fog_range, 0.0f, 1.0f) : 0.0f;
                     float inv_fog = 1.0f - fog_t;
                     fr = fr * inv_fog + g_engine.fog.r * fog_t;
                     fg = fg * inv_fog + g_engine.fog.g * fog_t;
@@ -496,7 +472,7 @@ static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1, S3D_Scr
                     uint8_t cr = (uint8_t)(fr * 255.0f);
                     uint8_t cg = (uint8_t)(fg * 255.0f);
                     uint8_t cb = (uint8_t)(fb_c * 255.0f);
-                    fb[idx] = (uint32_t)cr | ((uint32_t)cg << 8) | ((uint32_t)cb << 16) | (255u << 24);
+                    fb[idx] = S3D_PACK_RGBA(cr, cg, cb, 255u);
                 } else {
                     uint32_t dst = fb[idx];
                     float dr = (float)(dst & 0xFF) * (1.0f / 255.0f);
@@ -509,7 +485,7 @@ static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1, S3D_Scr
                     uint8_t cr = (uint8_t)(clampf(fr, 0.0f, 1.0f) * 255.0f);
                     uint8_t cg = (uint8_t)(clampf(fg, 0.0f, 1.0f) * 255.0f);
                     uint8_t cb = (uint8_t)(clampf(fb_c, 0.0f, 1.0f) * 255.0f);
-                    fb[idx] = (uint32_t)cr | ((uint32_t)cg << 8) | ((uint32_t)cb << 16) | (255u << 24);
+                    fb[idx] = S3D_PACK_RGBA(cr, cg, cb, 255u);
                 }
             }
             z += dz;
@@ -555,8 +531,7 @@ void s3d_clear_color(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
 
 EMSCRIPTEN_KEEPALIVE
 void s3d_frame_begin(void) {
-    uint32_t color = (uint32_t)g_engine.clear_r | ((uint32_t)g_engine.clear_g << 8) |
-                     ((uint32_t)g_engine.clear_b << 16) | ((uint32_t)g_engine.clear_a << 24);
+    uint32_t color = S3D_PACK_RGBA(g_engine.clear_r, g_engine.clear_g, g_engine.clear_b, g_engine.clear_a);
 
     uint32_t *fb = (uint32_t *)g_engine.framebuffer;
     int count = S3D_WIDTH * S3D_HEIGHT;
@@ -595,35 +570,35 @@ int s3d_camera_create(float px, float py, float pz, float tx, float ty, float tz
 
 EMSCRIPTEN_KEEPALIVE
 void s3d_camera_destroy(int camera_id) {
-    if (camera_id < 0 || camera_id >= S3D_MAX_CAMERAS) return;
+    S3D_CHECK_CAMERA(camera_id);
     g_engine.cameras[camera_id].active = 0;
     if (g_engine.active_camera == camera_id) g_engine.active_camera = -1;
 }
 
 EMSCRIPTEN_KEEPALIVE
 void s3d_camera_pos(int camera_id, float x, float y, float z) {
-    if (camera_id < 0 || camera_id >= S3D_MAX_CAMERAS || !g_engine.cameras[camera_id].active) return;
+    S3D_CHECK_CAMERA_ACTIVE(camera_id);
     g_engine.cameras[camera_id].position = s3d_vec3(x, y, z);
     update_camera(camera_id);
 }
 
 EMSCRIPTEN_KEEPALIVE
 void s3d_camera_target(int camera_id, float x, float y, float z) {
-    if (camera_id < 0 || camera_id >= S3D_MAX_CAMERAS || !g_engine.cameras[camera_id].active) return;
+    S3D_CHECK_CAMERA_ACTIVE(camera_id);
     g_engine.cameras[camera_id].target = s3d_vec3(x, y, z);
     update_camera(camera_id);
 }
 
 EMSCRIPTEN_KEEPALIVE
 void s3d_camera_set_fov(int camera_id, float fov_degrees) {
-    if (camera_id < 0 || camera_id >= S3D_MAX_CAMERAS || !g_engine.cameras[camera_id].active) return;
+    S3D_CHECK_CAMERA_ACTIVE(camera_id);
     g_engine.cameras[camera_id].fov = fov_degrees;
     update_camera(camera_id);
 }
 
 EMSCRIPTEN_KEEPALIVE
 void s3d_camera_set_clip(int camera_id, float near_clip, float far_clip) {
-    if (camera_id < 0 || camera_id >= S3D_MAX_CAMERAS || !g_engine.cameras[camera_id].active) return;
+    S3D_CHECK_CAMERA_ACTIVE(camera_id);
     g_engine.cameras[camera_id].near_clip = near_clip;
     g_engine.cameras[camera_id].far_clip = far_clip;
     update_camera(camera_id);
@@ -631,13 +606,13 @@ void s3d_camera_set_clip(int camera_id, float near_clip, float far_clip) {
 
 EMSCRIPTEN_KEEPALIVE
 void s3d_camera_activate(int camera_id) {
-    if (camera_id < 0 || camera_id >= S3D_MAX_CAMERAS || !g_engine.cameras[camera_id].active) return;
+    S3D_CHECK_CAMERA_ACTIVE(camera_id);
     g_engine.active_camera = camera_id;
 }
 
 EMSCRIPTEN_KEEPALIVE
 void s3d_camera_off(int camera_id) {
-    if (camera_id < 0 || camera_id >= S3D_MAX_CAMERAS) return;
+    S3D_CHECK_CAMERA(camera_id);
     if (g_engine.active_camera == camera_id) g_engine.active_camera = -1;
 }
 
@@ -737,6 +712,8 @@ int s3d_mesh_load_obj(const char *obj_text, int len) {
                 positions[pos_count * 3 + 1] = y;
                 positions[pos_count * 3 + 2] = z;
                 pos_count++;
+            } else {
+                fprintf(stderr, "s3d: OBJ vertex positions exceeded limit (%d)\n", S3D_OBJ_MAX);
             }
         } else if (*p == 'v' && p + 1 < end && p[1] == 't' && p + 2 < end && p[2] == ' ') {
             /* texcoord: vt u v */
@@ -748,6 +725,8 @@ int s3d_mesh_load_obj(const char *obj_text, int len) {
                 texcoords[tex_count * 2] = u;
                 texcoords[tex_count * 2 + 1] = v;
                 tex_count++;
+            } else {
+                fprintf(stderr, "s3d: OBJ texcoords exceeded limit (%d)\n", S3D_OBJ_MAX);
             }
         } else if (*p == 'v' && p + 1 < end && p[1] == 'n' && p + 2 < end && p[2] == ' ') {
             /* normal: vn x y z */
@@ -761,11 +740,13 @@ int s3d_mesh_load_obj(const char *obj_text, int len) {
                 normals[norm_count * 3 + 1] = y;
                 normals[norm_count * 3 + 2] = z;
                 norm_count++;
+            } else {
+                fprintf(stderr, "s3d: OBJ normals exceeded limit (%d)\n", S3D_OBJ_MAX);
             }
         } else if (*p == 'f' && p + 1 < end && p[1] == ' ') {
             /* face: f v/vt/vn ... (fan-triangulate) */
             p += 2;
-            int face_verts[32];
+            int face_verts[S3D_MAX_FACE_VERTS];
             int face_count = 0;
 
             while (p < end && *p != '\n' && *p != '\r') {
@@ -791,7 +772,7 @@ int s3d_mesh_load_obj(const char *obj_text, int len) {
                 ti--;
                 ni--;
 
-                if (face_count < 32 && vert_count < S3D_OBJ_MAX * 3) {
+                if (face_count < S3D_MAX_FACE_VERTS && vert_count < S3D_OBJ_MAX * 3) {
                     S3D_Vertex vert;
                     memset(&vert, 0, sizeof(vert));
                     if (vi >= 0 && vi < pos_count) {
@@ -849,7 +830,7 @@ int s3d_mesh_load_obj(const char *obj_text, int len) {
 /* ── lighting ────────────────────────────────────────────────────────── */
 
 static inline float smoothstepf(float edge0, float edge1, float x) {
-    float t = clampf((x - edge0) / (edge1 - edge0 + 1e-8f), 0.0f, 1.0f);
+    float t = clampf((x - edge0) / (edge1 - edge0 + S3D_EPSILON), 0.0f, 1.0f);
     return t * t * (3.0f - 2.0f * t);
 }
 
@@ -868,29 +849,22 @@ static S3D_Vec3 compute_vertex_light(S3D_Vec3 world_pos, S3D_Vec3 world_normal, 
             float ndotl = v3_dot(world_normal, v3_negate(l->direction));
             if (ndotl < 0.0f) ndotl = 0.0f;
             result = v3_add(result, v3_mul(v3_scale(l->color, base_color), ndotl));
-        } else if (l->type == S3D_LIGHT_POINT) {
+        } else if (l->type == S3D_LIGHT_POINT || l->type == S3D_LIGHT_SPOT) {
             S3D_Vec3 to_light = v3_sub(l->position, world_pos);
             float dist = v3_length(to_light);
             float att = clampf(1.0f - dist / l->range, 0.0f, 1.0f);
             if (att > 0.0f) {
-                S3D_Vec3 light_dir = v3_mul(to_light, 1.0f / (dist + 1e-8f));
+                S3D_Vec3 light_dir = v3_mul(to_light, 1.0f / (dist + S3D_EPSILON));
                 float ndotl = v3_dot(world_normal, light_dir);
                 if (ndotl < 0.0f) ndotl = 0.0f;
-                result = v3_add(result, v3_mul(v3_scale(l->color, base_color), ndotl * att));
-            }
-        } else if (l->type == S3D_LIGHT_SPOT) {
-            S3D_Vec3 to_light = v3_sub(l->position, world_pos);
-            float dist = v3_length(to_light);
-            float att = clampf(1.0f - dist / l->range, 0.0f, 1.0f);
-            if (att > 0.0f) {
-                S3D_Vec3 light_dir = v3_mul(to_light, 1.0f / (dist + 1e-8f));
-                float ndotl = v3_dot(world_normal, light_dir);
-                if (ndotl < 0.0f) ndotl = 0.0f;
-                float cos_angle = v3_dot(v3_negate(l->direction), light_dir);
-                float cos_outer = cosf(deg_to_rad(l->outer_angle));
-                float cos_inner = cosf(deg_to_rad(l->inner_angle));
-                float spot = smoothstepf(cos_outer, cos_inner, cos_angle);
-                result = v3_add(result, v3_mul(v3_scale(l->color, base_color), ndotl * att * spot));
+                float intensity = ndotl * att;
+                if (l->type == S3D_LIGHT_SPOT) {
+                    float cos_angle = v3_dot(v3_negate(l->direction), light_dir);
+                    float cos_outer = cosf(deg_to_rad(l->outer_angle));
+                    float cos_inner = cosf(deg_to_rad(l->inner_angle));
+                    intensity *= smoothstepf(cos_outer, cos_inner, cos_angle);
+                }
+                result = v3_add(result, v3_mul(v3_scale(l->color, base_color), intensity));
             }
         }
     }
@@ -908,7 +882,7 @@ static S3D_Vec3 compute_vertex_light(S3D_Vec3 world_pos, S3D_Vec3 world_normal, 
 
 static void draw_object_internal(int mesh_id, int texture_id, S3D_Mat4 mvp, S3D_Mat4 model, S3D_Vec3 color,
                                  float alpha) {
-    if (mesh_id < 0 || mesh_id >= S3D_MAX_MESHES || !g_engine.meshes[mesh_id].active) return;
+    S3D_CHECK_MESH(mesh_id);
 
     S3D_Mesh *mesh = &g_engine.meshes[mesh_id];
 
@@ -997,46 +971,46 @@ int s3d_object_create(int mesh_id, int texture_id) {
 
 EMSCRIPTEN_KEEPALIVE
 void s3d_object_destroy(int object_id) {
-    if (object_id < 0 || object_id >= S3D_MAX_OBJECTS) return;
+    S3D_CHECK_OBJECT(object_id);
     g_engine.objects[object_id].active = 0;
 }
 
 EMSCRIPTEN_KEEPALIVE
 void s3d_object_position(int object_id, float x, float y, float z) {
-    if (object_id < 0 || object_id >= S3D_MAX_OBJECTS || !g_engine.objects[object_id].active) return;
+    S3D_CHECK_OBJECT_ACTIVE(object_id);
     g_engine.objects[object_id].position = s3d_vec3(x, y, z);
     rebuild_model_matrix(&g_engine.objects[object_id]);
 }
 
 EMSCRIPTEN_KEEPALIVE
 void s3d_object_rotation(int object_id, float rx, float ry, float rz) {
-    if (object_id < 0 || object_id >= S3D_MAX_OBJECTS || !g_engine.objects[object_id].active) return;
+    S3D_CHECK_OBJECT_ACTIVE(object_id);
     g_engine.objects[object_id].rotation = s3d_vec3(rx, ry, rz);
     rebuild_model_matrix(&g_engine.objects[object_id]);
 }
 
 EMSCRIPTEN_KEEPALIVE
 void s3d_object_scale(int object_id, float sx, float sy, float sz) {
-    if (object_id < 0 || object_id >= S3D_MAX_OBJECTS || !g_engine.objects[object_id].active) return;
+    S3D_CHECK_OBJECT_ACTIVE(object_id);
     g_engine.objects[object_id].scale = s3d_vec3(sx, sy, sz);
     rebuild_model_matrix(&g_engine.objects[object_id]);
 }
 
 EMSCRIPTEN_KEEPALIVE
 void s3d_object_color(int object_id, float r, float g, float b) {
-    if (object_id < 0 || object_id >= S3D_MAX_OBJECTS || !g_engine.objects[object_id].active) return;
+    S3D_CHECK_OBJECT_ACTIVE(object_id);
     g_engine.objects[object_id].color = s3d_vec3(r, g, b);
 }
 
 EMSCRIPTEN_KEEPALIVE
 void s3d_object_alpha(int object_id, float a) {
-    if (object_id < 0 || object_id >= S3D_MAX_OBJECTS || !g_engine.objects[object_id].active) return;
+    S3D_CHECK_OBJECT_ACTIVE(object_id);
     g_engine.objects[object_id].alpha = a;
 }
 
 EMSCRIPTEN_KEEPALIVE
 void s3d_object_active(int object_id, int active) {
-    if (object_id < 0 || object_id >= S3D_MAX_OBJECTS) return;
+    S3D_CHECK_OBJECT(object_id);
     g_engine.objects[object_id].active = active;
 }
 
@@ -1044,7 +1018,7 @@ void s3d_object_active(int object_id, int active) {
 
 EMSCRIPTEN_KEEPALIVE
 void s3d_light_ambient(int light_id, float r, float g, float b) {
-    if (light_id < 0 || light_id >= S3D_MAX_LIGHTS) return;
+    S3D_CHECK_LIGHT(light_id);
     S3D_Light *l = &g_engine.lights[light_id];
     l->type = S3D_LIGHT_AMBIENT;
     l->color = s3d_vec3(r, g, b);
@@ -1052,7 +1026,7 @@ void s3d_light_ambient(int light_id, float r, float g, float b) {
 
 EMSCRIPTEN_KEEPALIVE
 void s3d_light_directional(int light_id, float r, float g, float b, float dx, float dy, float dz) {
-    if (light_id < 0 || light_id >= S3D_MAX_LIGHTS) return;
+    S3D_CHECK_LIGHT(light_id);
     S3D_Light *l = &g_engine.lights[light_id];
     l->type = S3D_LIGHT_DIRECTIONAL;
     l->color = s3d_vec3(r, g, b);
@@ -1061,7 +1035,7 @@ void s3d_light_directional(int light_id, float r, float g, float b, float dx, fl
 
 EMSCRIPTEN_KEEPALIVE
 void s3d_light_point(int light_id, float r, float g, float b, float x, float y, float z, float range) {
-    if (light_id < 0 || light_id >= S3D_MAX_LIGHTS) return;
+    S3D_CHECK_LIGHT(light_id);
     S3D_Light *l = &g_engine.lights[light_id];
     l->type = S3D_LIGHT_POINT;
     l->color = s3d_vec3(r, g, b);
@@ -1072,7 +1046,7 @@ void s3d_light_point(int light_id, float r, float g, float b, float x, float y, 
 EMSCRIPTEN_KEEPALIVE
 void s3d_light_spot(int light_id, float r, float g, float b, float x, float y, float z, float dx, float dy, float dz,
                     float range, float inner_deg, float outer_deg) {
-    if (light_id < 0 || light_id >= S3D_MAX_LIGHTS) return;
+    S3D_CHECK_LIGHT(light_id);
     S3D_Light *l = &g_engine.lights[light_id];
     l->type = S3D_LIGHT_SPOT;
     l->color = s3d_vec3(r, g, b);
@@ -1085,7 +1059,7 @@ void s3d_light_spot(int light_id, float r, float g, float b, float x, float y, f
 
 EMSCRIPTEN_KEEPALIVE
 void s3d_light_off(int light_id) {
-    if (light_id < 0 || light_id >= S3D_MAX_LIGHTS) return;
+    S3D_CHECK_LIGHT(light_id);
     g_engine.lights[light_id].type = S3D_LIGHT_OFF;
 }
 

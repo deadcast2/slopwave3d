@@ -2,6 +2,12 @@
 // SlopScript — DSL transpiler + runtime for slop3d
 // ============================================================
 
+// --- Constants ---
+
+const MAX_TEXTURE_SIZE = 128;
+const TARGET_FPS = 30;
+const FPS_SAMPLE_MS = 500;
+
 // --- Runtime Helpers ---
 
 const _DEG = Math.PI / 180;
@@ -438,8 +444,8 @@ class SlopRuntime {
             img.onerror = reject;
             img.src = url;
         });
-        const w = Math.min(img.width, 128);
-        const h = Math.min(img.height, 128);
+        const w = Math.min(img.width, MAX_TEXTURE_SIZE);
+        const h = Math.min(img.height, MAX_TEXTURE_SIZE);
         const canvas = document.createElement('canvas');
         canvas.width = w;
         canvas.height = h;
@@ -713,7 +719,7 @@ class SlopRuntime {
 
         const fpsEl = document.getElementById('fps');
         const ftEl = document.getElementById('frametime');
-        const frameInterval = 1000 / 30;
+        const frameInterval = 1000 / TARGET_FPS;
         this._nextFrame = this._lastTime + frameInterval;
 
         const render = () => {
@@ -730,7 +736,7 @@ class SlopRuntime {
 
             this._frameCount++;
             this._fpsAccum += this.dt * 1000;
-            if (this._fpsAccum >= 500) {
+            if (this._fpsAccum >= FPS_SAMPLE_MS) {
                 this._fpsDisplay = (this._frameCount / this._fpsAccum) * 1000;
                 this._ftDisplay = this._fpsAccum / this._frameCount;
                 this._frameCount = 0;
@@ -845,6 +851,15 @@ function slopLex(src) {
         }
         return c;
     }
+    function isIdentStart(c) {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c === '_';
+    }
+    function isIdentChar(c) {
+        return isIdentStart(c) || (c >= '0' && c <= '9');
+    }
+    function skipComment() {
+        while (pos < len && ch() !== '\n') adv();
+    }
     function tok(type, val) {
         return { type, val, line, col };
     }
@@ -862,7 +877,7 @@ function slopLex(src) {
             continue;
         }
         if (ch() === '#') {
-            while (pos < len && ch() !== '\n') adv();
+            skipComment();
             if (ch() === '\n') adv();
             continue;
         }
@@ -888,7 +903,7 @@ function slopLex(src) {
                 continue;
             }
             if (ch() === '#') {
-                while (pos < len && ch() !== '\n') adv();
+                skipComment();
                 break;
             }
             const ln = line,
@@ -930,7 +945,12 @@ function slopLex(src) {
                 (ch() === '.' && pos + 1 < len && src[pos + 1] >= '0' && src[pos + 1] <= '9')
             ) {
                 let num = '';
-                while (pos < len && ((ch() >= '0' && ch() <= '9') || ch() === '.')) num += adv();
+                let dots = 0;
+                while (pos < len && ((ch() >= '0' && ch() <= '9') || ch() === '.')) {
+                    if (ch() === '.') dots++;
+                    num += adv();
+                }
+                if (dots > 1) throw new Error(`Invalid number '${num}' at line ${ln}:${cl}`);
                 tokens.push({
                     type: TK.NUMBER,
                     val: parseFloat(num),
@@ -940,16 +960,9 @@ function slopLex(src) {
                 continue;
             }
             // ident / keyword
-            if ((ch() >= 'a' && ch() <= 'z') || (ch() >= 'A' && ch() <= 'Z') || ch() === '_') {
+            if (isIdentStart(ch())) {
                 let id = '';
-                while (
-                    pos < len &&
-                    ((ch() >= 'a' && ch() <= 'z') ||
-                        (ch() >= 'A' && ch() <= 'Z') ||
-                        (ch() >= '0' && ch() <= '9') ||
-                        ch() === '_')
-                )
-                    id += adv();
+                while (pos < len && isIdentChar(ch())) id += adv();
                 tokens.push({ type: TK.IDENT, val: id, line: ln, col: cl });
                 continue;
             }
@@ -968,6 +981,9 @@ function slopLex(src) {
 }
 
 // --- Parser ---
+
+const CALL_STMTS = new Set(['goto', 'kill', 'off', 'on', 'use', 'sky', 'fog']);
+const LIGHT_TYPES = new Set(['ambient', 'directional', 'point', 'spot']);
 
 function slopParse(tokens) {
     let pos = 0;
@@ -1085,18 +1101,7 @@ function slopParse(tokens) {
         if (at(TK.IDENT, 'fn')) return parseFn();
         if (at(TK.IDENT, 'return')) return parseReturn();
         // colon-style statement calls: goto:, destroy:, or ident:
-        if (
-            at(TK.IDENT) &&
-            (t.val === 'goto' ||
-                t.val === 'kill' ||
-                t.val === 'off' ||
-                t.val === 'on' ||
-                t.val === 'use' ||
-                t.val === 'sky' ||
-                t.val === 'fog') &&
-            tokens[pos + 1] &&
-            tokens[pos + 1].type === TK.COLON
-        )
+        if (at(TK.IDENT) && CALL_STMTS.has(t.val) && tokens[pos + 1] && tokens[pos + 1].type === TK.COLON)
             return parseCallStmt();
         // assignment or expression
         return parseAssignOrExpr();
@@ -1171,7 +1176,6 @@ function slopParse(tokens) {
                 };
             }
             // light creation: ambient:, directional:, point:, spot:
-            const LIGHT_TYPES = ['ambient', 'directional', 'point', 'spot'];
             for (const lt of LIGHT_TYPES) {
                 if (at(TK.IDENT, lt)) {
                     eat(TK.IDENT);

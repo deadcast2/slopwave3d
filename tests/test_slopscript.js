@@ -91,6 +91,9 @@ describe('Lexer', () => {
     it('errors on bad indentation', () => {
         assert.throws(() => slopLex('scene a\n    x = 1\n  y = 2\n'), /indent/i);
     });
+    it('errors on multiple dots in number', () => {
+        assert.throws(() => slopLex('scene a\n    x = 1.2.3\n'), /Invalid number/);
+    });
 });
 
 // --- Parser Tests ---
