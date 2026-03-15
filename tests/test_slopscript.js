@@ -296,19 +296,10 @@ describe('Parser', () => {
         assert.equal(stmt.args.length, 3);
     });
 
-    it('parses camera with fps behavior', () => {
-        const ast = parse('scene main\n    cam = camera: fps, 0, 1.5, 5\n');
-        const stmt = ast.scenes[0].body[0];
-        assert.equal(stmt.type, 'CameraAssign');
-        assert.equal(stmt.behavior, 'fps');
-        assert.equal(stmt.args.length, 3);
-    });
-
-    it('parses camera without behavior', () => {
+    it('parses camera creation', () => {
         const ast = parse('scene main\n    cam = camera: 0, 1.5, 5\n');
         const stmt = ast.scenes[0].body[0];
         assert.equal(stmt.type, 'CameraAssign');
-        assert.equal(stmt.behavior, null);
         assert.equal(stmt.args.length, 3);
     });
 });
@@ -342,6 +333,16 @@ describe('CodeGen', () => {
         assert.ok(js.includes('_s.box.alpha = 0.5'));
     });
 
+    it('generates style assignment with ps1 constant', () => {
+        const js = gen('scene main\n    box.style = ps1\n');
+        assert.ok(js.includes('_s.box.style = 0'));
+    });
+
+    it('generates style assignment with n64 constant', () => {
+        const js = gen('scene main\n    box.style = n64\n');
+        assert.ok(js.includes('_s.box.style = 1'));
+    });
+
     it('generates dot chain assignment', () => {
         const js = gen('scene main\n    update\n        box.rotation.y = t * 30\n');
         assert.ok(js.includes('_s.box.rotation.y = (_rt.t * 30)'));
@@ -358,9 +359,10 @@ describe('CodeGen', () => {
         assert.ok(js.includes('_rt.camera(0, 1, 5)'));
     });
 
-    it('generates camera with fps behavior', () => {
-        const js = gen('scene main\n    cam = camera: fps, 0, 1.5, 5\n');
-        assert.ok(js.includes("_rt.camera(0, 1.5, 5, 'fps')"));
+    it('generates act_as with fps constant', () => {
+        const js = gen('scene main\n    cam = camera: 0, 1.5, 5\n    cam.act_as = fps\n');
+        assert.ok(js.includes('_rt.camera(0, 1.5, 5)'));
+        assert.ok(js.includes("_s.cam.act_as = 'fps'"));
     });
 
     it('generates use call', () => {

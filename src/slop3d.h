@@ -49,6 +49,9 @@ static inline S3D_Vec4 s3d_vec4(float x, float y, float z, float w) {
     return r;
 }
 
+#define S3D_TEXMAP_AFFINE 0
+#define S3D_TEXMAP_PERSPECTIVE 1
+
 #define S3D_LIGHT_OFF 0
 #define S3D_LIGHT_AMBIENT 1
 #define S3D_LIGHT_DIRECTIONAL 2
@@ -104,6 +107,7 @@ typedef struct {
     S3D_Vec3 scale;
     S3D_Vec3 color;
     float alpha;
+    int texmap;
     S3D_Mat4 model;
 } S3D_Object;
 
@@ -141,6 +145,7 @@ void s3d_object_scale(int object_id, float sx, float sy, float sz);
 void s3d_object_color(int object_id, float r, float g, float b);
 void s3d_object_alpha(int object_id, float a);
 void s3d_object_active(int object_id, int active);
+void s3d_object_texmap(int object_id, int mode);
 void s3d_render_scene(void);
 
 void s3d_light_ambient(int light_id, float r, float g, float b);

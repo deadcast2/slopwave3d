@@ -19,6 +19,7 @@
 #define S3D_MIN_SPAN 1e-6f
 #define S3D_MAX_FACE_VERTS 32
 #define S3D_PACK_RGBA(r, g, b, a) ((uint32_t)(r) | ((uint32_t)(g) << 8) | ((uint32_t)(b) << 16) | ((uint32_t)(a) << 24))
+#define S3D_PERSP_SUBDIV 16
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
@@ -256,6 +257,7 @@ typedef struct {
     float u, v;
     float r, g, b;
     float eye_z;
+    float uw, vw, invw;
 } S3D_ScreenVert;
 
 /* ── rasterizer helpers ──────────────────────────────────────────────── */
@@ -286,6 +288,9 @@ static inline S3D_ScreenVert ndc_to_screen(float ndc_x, float ndc_y, float ndc_z
     sv.g = g;
     sv.b = b;
     sv.eye_z = eye_z;
+    sv.invw = 1.0f / eye_z;
+    sv.uw = u * sv.invw;
+    sv.vw = v * sv.invw;
     return sv;
 }
 
@@ -326,6 +331,7 @@ static inline float clampf(float v, float lo, float hi) {
 
 typedef struct {
     float x, z, r, g, b, u, v, ez;
+    float uw, vw, invw;
 } S3D_EdgeVals;
 
 static inline S3D_EdgeVals interpolate_edge(S3D_ScreenVert *a, S3D_ScreenVert *b, float fy) {
@@ -340,6 +346,9 @@ static inline S3D_EdgeVals interpolate_edge(S3D_ScreenVert *a, S3D_ScreenVert *b
         e.u = b->u;
         e.v = b->v;
         e.ez = b->eye_z;
+        e.uw = b->uw;
+        e.vw = b->vw;
+        e.invw = b->invw;
     } else {
         float t = clampf((fy - a->y) / h, 0.0f, 1.0f);
         e.x = a->x + (b->x - a->x) * t;
@@ -350,6 +359,9 @@ static inline S3D_EdgeVals interpolate_edge(S3D_ScreenVert *a, S3D_ScreenVert *b
         e.u = a->u + (b->u - a->u) * t;
         e.v = a->v + (b->v - a->v) * t;
         e.ez = a->eye_z + (b->eye_z - a->eye_z) * t;
+        e.uw = a->uw + (b->uw - a->uw) * t;
+        e.vw = a->vw + (b->vw - a->vw) * t;
+        e.invw = a->invw + (b->invw - a->invw) * t;
     }
     return e;
 }
@@ -360,8 +372,59 @@ static inline void swap_edges(S3D_EdgeVals *a, S3D_EdgeVals *b) {
     *b = t;
 }
 
+/* pixel body macro — shared by affine and perspective scanline loops */
+#define S3D_RASTER_PIXEL(x, z, cu, cv, cr_f, cg_f, cb_f, ez, row_offset, fb, tex, obj_alpha)                           \
+    do {                                                                                                               \
+        uint16_t z16 = (uint16_t)(clampf(z, 0.0f, 1.0f) * 65535.0f);                                                   \
+        int idx = (row_offset) + (x);                                                                                  \
+        if (z16 <= g_engine.zbuffer[idx]) {                                                                            \
+            float fr = clampf(cr_f, 0.0f, 1.0f);                                                                       \
+            float fg = clampf(cg_f, 0.0f, 1.0f);                                                                       \
+            float fb_c = clampf(cb_f, 0.0f, 1.0f);                                                                     \
+            if (tex) {                                                                                                 \
+                int wmask = (tex)->width - 1;                                                                          \
+                int hmask = (tex)->height - 1;                                                                         \
+                int iu = (int)((cu) * (float)(tex)->width) & wmask;                                                    \
+                int iv = (int)((cv) * (float)(tex)->height) & hmask;                                                   \
+                int tidx = (iv * (tex)->width + iu) * 4;                                                               \
+                fr *= (tex)->pixels[tidx] * (1.0f / 255.0f);                                                           \
+                fg *= (tex)->pixels[tidx + 1] * (1.0f / 255.0f);                                                       \
+                fb_c *= (tex)->pixels[tidx + 2] * (1.0f / 255.0f);                                                     \
+            }                                                                                                          \
+            if (g_engine.fog.enabled) {                                                                                \
+                float fog_range = g_engine.fog.end - g_engine.fog.start;                                               \
+                float fog_t =                                                                                          \
+                    (fog_range > S3D_MIN_SPAN) ? clampf(((ez) - g_engine.fog.start) / fog_range, 0.0f, 1.0f) : 0.0f;   \
+                float inv_fog = 1.0f - fog_t;                                                                          \
+                fr = fr * inv_fog + g_engine.fog.r * fog_t;                                                            \
+                fg = fg * inv_fog + g_engine.fog.g * fog_t;                                                            \
+                fb_c = fb_c * inv_fog + g_engine.fog.b * fog_t;                                                        \
+            }                                                                                                          \
+            if ((obj_alpha) >= 1.0f) {                                                                                 \
+                g_engine.zbuffer[idx] = z16;                                                                           \
+                uint8_t cr = (uint8_t)(fr * 255.0f);                                                                   \
+                uint8_t cg = (uint8_t)(fg * 255.0f);                                                                   \
+                uint8_t cb = (uint8_t)(fb_c * 255.0f);                                                                 \
+                (fb)[idx] = S3D_PACK_RGBA(cr, cg, cb, 255u);                                                           \
+            } else {                                                                                                   \
+                uint32_t dst = (fb)[idx];                                                                              \
+                float pdr = (float)(dst & 0xFF) * (1.0f / 255.0f);                                                     \
+                float pdg = (float)((dst >> 8) & 0xFF) * (1.0f / 255.0f);                                              \
+                float pdb = (float)((dst >> 16) & 0xFF) * (1.0f / 255.0f);                                             \
+                float inv_a = 1.0f - (obj_alpha);                                                                      \
+                fr = fr * (obj_alpha) + pdr * inv_a;                                                                   \
+                fg = fg * (obj_alpha) + pdg * inv_a;                                                                   \
+                fb_c = fb_c * (obj_alpha) + pdb * inv_a;                                                               \
+                uint8_t cr = (uint8_t)(clampf(fr, 0.0f, 1.0f) * 255.0f);                                               \
+                uint8_t cg = (uint8_t)(clampf(fg, 0.0f, 1.0f) * 255.0f);                                               \
+                uint8_t cb = (uint8_t)(clampf(fb_c, 0.0f, 1.0f) * 255.0f);                                             \
+                (fb)[idx] = S3D_PACK_RGBA(cr, cg, cb, 255u);                                                           \
+            }                                                                                                          \
+        }                                                                                                              \
+    } while (0)
+
 static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1, S3D_ScreenVert v2, int texture_id,
-                                   float obj_alpha) {
+                                   float obj_alpha, int texmap) {
     S3D_Texture *tex = NULL;
     if (texture_id >= 0 && texture_id < S3D_MAX_TEXTURES && g_engine.textures[texture_id].active) {
         tex = &g_engine.textures[texture_id];
@@ -437,64 +500,62 @@ static void s3d_rasterize_triangle(S3D_ScreenVert v0, S3D_ScreenVert v1, S3D_Scr
 
         int row_offset = y * S3D_WIDTH;
 
-        for (int x = ix_start; x <= ix_end; x++) {
-            uint16_t z16 = (uint16_t)(clampf(z, 0.0f, 1.0f) * 65535.0f);
+        if (texmap == S3D_TEXMAP_PERSPECTIVE && tex) {
+            /* perspective-correct path (Abrash subdivision) */
+            float cur_uw = le.uw + (se.uw - le.uw) * s0;
+            float cur_vw = le.vw + (se.vw - le.vw) * s0;
+            float cur_invw = le.invw + (se.invw - le.invw) * s0;
+            float d_uw = (se.uw - le.uw) * inv_span;
+            float d_vw = (se.vw - le.vw) * inv_span;
+            float d_invw = (se.invw - le.invw) * inv_span;
 
-            int idx = row_offset + x;
-            if (z16 <= g_engine.zbuffer[idx]) {
-                float fr = clampf(cr_f, 0.0f, 1.0f);
-                float fg = clampf(cg_f, 0.0f, 1.0f);
-                float fb_c = clampf(cb_f, 0.0f, 1.0f);
-
-                if (tex) {
-                    int wmask = tex->width - 1;
-                    int hmask = tex->height - 1;
-                    int iu = (int)(cu * (float)tex->width) & wmask;
-                    int iv = (int)(cv * (float)tex->height) & hmask;
-                    int tidx = (iv * tex->width + iu) * 4;
-                    fr *= tex->pixels[tidx] * (1.0f / 255.0f);
-                    fg *= tex->pixels[tidx + 1] * (1.0f / 255.0f);
-                    fb_c *= tex->pixels[tidx + 2] * (1.0f / 255.0f);
+            int x = ix_start;
+            while (x <= ix_end) {
+                int remain = ix_end - x + 1;
+                int step = (remain < S3D_PERSP_SUBDIV) ? remain : S3D_PERSP_SUBDIV;
+                /* true UV at start of sub-span */
+                float rw0 = 1.0f / cur_invw;
+                float u0 = cur_uw * rw0;
+                float v0 = cur_vw * rw0;
+                /* true UV at end of sub-span */
+                float end_uw = cur_uw + d_uw * step;
+                float end_vw = cur_vw + d_vw * step;
+                float end_invw = cur_invw + d_invw * step;
+                float rw1 = 1.0f / end_invw;
+                float u1 = end_uw * rw1;
+                float v1 = end_vw * rw1;
+                /* affine sub-steps within this chunk */
+                float inv_step = 1.0f / (float)step;
+                float du_sub = (u1 - u0) * inv_step;
+                float dv_sub = (v1 - v0) * inv_step;
+                cu = u0;
+                cv = v0;
+                for (int i = 0; i < step; i++, x++) {
+                    S3D_RASTER_PIXEL(x, z, cu, cv, cr_f, cg_f, cb_f, ez, row_offset, fb, tex, obj_alpha);
+                    z += dz;
+                    cr_f += dr;
+                    cg_f += dg;
+                    cb_f += db;
+                    cu += du_sub;
+                    cv += dv_sub;
+                    ez += dez;
                 }
-
-                if (g_engine.fog.enabled) {
-                    float fog_range = g_engine.fog.end - g_engine.fog.start;
-                    float fog_t =
-                        (fog_range > S3D_MIN_SPAN) ? clampf((ez - g_engine.fog.start) / fog_range, 0.0f, 1.0f) : 0.0f;
-                    float inv_fog = 1.0f - fog_t;
-                    fr = fr * inv_fog + g_engine.fog.r * fog_t;
-                    fg = fg * inv_fog + g_engine.fog.g * fog_t;
-                    fb_c = fb_c * inv_fog + g_engine.fog.b * fog_t;
-                }
-
-                if (obj_alpha >= 1.0f) {
-                    g_engine.zbuffer[idx] = z16;
-                    uint8_t cr = (uint8_t)(fr * 255.0f);
-                    uint8_t cg = (uint8_t)(fg * 255.0f);
-                    uint8_t cb = (uint8_t)(fb_c * 255.0f);
-                    fb[idx] = S3D_PACK_RGBA(cr, cg, cb, 255u);
-                } else {
-                    uint32_t dst = fb[idx];
-                    float dr = (float)(dst & 0xFF) * (1.0f / 255.0f);
-                    float dg = (float)((dst >> 8) & 0xFF) * (1.0f / 255.0f);
-                    float db = (float)((dst >> 16) & 0xFF) * (1.0f / 255.0f);
-                    float inv_a = 1.0f - obj_alpha;
-                    fr = fr * obj_alpha + dr * inv_a;
-                    fg = fg * obj_alpha + dg * inv_a;
-                    fb_c = fb_c * obj_alpha + db * inv_a;
-                    uint8_t cr = (uint8_t)(clampf(fr, 0.0f, 1.0f) * 255.0f);
-                    uint8_t cg = (uint8_t)(clampf(fg, 0.0f, 1.0f) * 255.0f);
-                    uint8_t cb = (uint8_t)(clampf(fb_c, 0.0f, 1.0f) * 255.0f);
-                    fb[idx] = S3D_PACK_RGBA(cr, cg, cb, 255u);
-                }
+                cur_uw = end_uw;
+                cur_vw = end_vw;
+                cur_invw = end_invw;
             }
-            z += dz;
-            cr_f += dr;
-            cg_f += dg;
-            cb_f += db;
-            cu += du;
-            cv += dv;
-            ez += dez;
+        } else {
+            /* affine path (default) */
+            for (int x = ix_start; x <= ix_end; x++) {
+                S3D_RASTER_PIXEL(x, z, cu, cv, cr_f, cg_f, cb_f, ez, row_offset, fb, tex, obj_alpha);
+                z += dz;
+                cr_f += dr;
+                cg_f += dg;
+                cb_f += db;
+                cu += du;
+                cv += dv;
+                ez += dez;
+            }
         }
     }
 }
@@ -880,8 +941,8 @@ static S3D_Vec3 compute_vertex_light(S3D_Vec3 world_pos, S3D_Vec3 world_normal, 
 
 /* ── internal object drawing ─────────────────────────────────────────── */
 
-static void draw_object_internal(int mesh_id, int texture_id, S3D_Mat4 mvp, S3D_Mat4 model, S3D_Vec3 color,
-                                 float alpha) {
+static void draw_object_internal(int mesh_id, int texture_id, S3D_Mat4 mvp, S3D_Mat4 model, S3D_Vec3 color, float alpha,
+                                 int texmap) {
     S3D_CHECK_MESH(mesh_id);
 
     S3D_Mesh *mesh = &g_engine.meshes[mesh_id];
@@ -933,7 +994,7 @@ static void draw_object_internal(int mesh_id, int texture_id, S3D_Mat4 mvp, S3D_
 
             if (!is_front_facing(sv0, sv1, sv2)) continue;
 
-            s3d_rasterize_triangle(sv0, sv1, sv2, texture_id, alpha);
+            s3d_rasterize_triangle(sv0, sv1, sv2, texture_id, alpha, texmap);
         }
     }
 }
@@ -962,6 +1023,7 @@ int s3d_object_create(int mesh_id, int texture_id) {
             obj->scale = s3d_vec3(1.0f, 1.0f, 1.0f);
             obj->color = s3d_vec3(1.0f, 1.0f, 1.0f);
             obj->alpha = 1.0f;
+            obj->texmap = S3D_TEXMAP_AFFINE;
             rebuild_model_matrix(obj);
             return i;
         }
@@ -1012,6 +1074,12 @@ EMSCRIPTEN_KEEPALIVE
 void s3d_object_active(int object_id, int active) {
     S3D_CHECK_OBJECT(object_id);
     g_engine.objects[object_id].active = active;
+}
+
+EMSCRIPTEN_KEEPALIVE
+void s3d_object_texmap(int object_id, int mode) {
+    S3D_CHECK_OBJECT_ACTIVE(object_id);
+    g_engine.objects[object_id].texmap = mode;
 }
 
 /* ── light API ───────────────────────────────────────────────────────── */
@@ -1107,7 +1175,7 @@ void s3d_render_scene(void) {
     for (int i = 0; i < opaque_count; i++) {
         S3D_Object *obj = &g_engine.objects[opaque[i]];
         S3D_Mat4 mvp = m4_multiply(vp, obj->model);
-        draw_object_internal(obj->mesh_id, obj->texture_id, mvp, obj->model, obj->color, obj->alpha);
+        draw_object_internal(obj->mesh_id, obj->texture_id, mvp, obj->model, obj->color, obj->alpha, obj->texmap);
     }
 
     /* sort transparent objects back-to-front (insertion sort) */
@@ -1128,6 +1196,6 @@ void s3d_render_scene(void) {
     for (int i = 0; i < transparent_count; i++) {
         S3D_Object *obj = &g_engine.objects[transparent[i]];
         S3D_Mat4 mvp = m4_multiply(vp, obj->model);
-        draw_object_internal(obj->mesh_id, obj->texture_id, mvp, obj->model, obj->color, obj->alpha);
+        draw_object_internal(obj->mesh_id, obj->texture_id, mvp, obj->model, obj->color, obj->alpha, obj->texmap);
     }
 }

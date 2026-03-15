@@ -246,17 +246,17 @@ TEST(ndc_corners) {
 
 TEST(backface_cw_is_front) {
     /* CW in screen space (Y-down): top, bottom-right, bottom-left */
-    S3D_ScreenVert a = {160, 10, 0.5f, 0, 0, 1, 0, 0, 0};
-    S3D_ScreenVert b = {200, 200, 0.5f, 0, 0, 0, 1, 0, 0};
-    S3D_ScreenVert c = {120, 200, 0.5f, 0, 0, 0, 0, 1, 0};
+    S3D_ScreenVert a = {160, 10, 0.5f, 0, 0, 1, 0, 0, 0, 0, 0, 0};
+    S3D_ScreenVert b = {200, 200, 0.5f, 0, 0, 0, 1, 0, 0, 0, 0, 0};
+    S3D_ScreenVert c = {120, 200, 0.5f, 0, 0, 0, 0, 1, 0, 0, 0, 0};
     ASSERT_TRUE(is_front_facing(a, b, c));
 }
 
 TEST(backface_ccw_is_back) {
     /* CCW in screen space: top, bottom-left, bottom-right */
-    S3D_ScreenVert a = {160, 10, 0.5f, 0, 0, 1, 0, 0, 0};
-    S3D_ScreenVert b = {120, 200, 0.5f, 0, 0, 0, 0, 1, 0};
-    S3D_ScreenVert c = {200, 200, 0.5f, 0, 0, 0, 1, 0, 0};
+    S3D_ScreenVert a = {160, 10, 0.5f, 0, 0, 1, 0, 0, 0, 0, 0, 0};
+    S3D_ScreenVert b = {120, 200, 0.5f, 0, 0, 0, 0, 1, 0, 0, 0, 0};
+    S3D_ScreenVert c = {200, 200, 0.5f, 0, 0, 0, 1, 0, 0, 0, 0, 0};
     ASSERT_TRUE(!is_front_facing(a, b, c));
 }
 

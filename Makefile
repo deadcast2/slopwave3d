@@ -33,6 +33,7 @@ EXPORTED_FUNCTIONS = \
 	_s3d_object_color, \
 	_s3d_object_alpha, \
 	_s3d_object_active, \
+	_s3d_object_texmap, \
 	_s3d_render_scene, \
 	_s3d_light_ambient, \
 	_s3d_light_directional, \

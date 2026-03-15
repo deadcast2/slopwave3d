@@ -43,7 +43,8 @@ assets
     skin crate = crate.jpg
 
 scene main
-    cam = camera: fps, 0, 1.5, 5
+    cam = camera: 0, 1.5, 5
+    cam.act_as = fps
     fill = ambient: 0.3, 0.3, 0.3
     sun = directional: 1.0, 0.9, 0.8, -1, -1, -1
     glow = point: 0.3, 0.6, 1.0, 3, 1, 0, 10

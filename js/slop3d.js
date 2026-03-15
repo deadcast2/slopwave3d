@@ -142,6 +142,7 @@ class SlopObject {
         this._id = id;
         this._alpha = 1;
         this._active = true;
+        this._style = 0;
         this.position = new SlopVec3(v => rt._objectPosition(id, v._x, v._y, v._z));
         this.rotation = new SlopVec3(v => rt._objectRotation(id, v._x, v._y, v._z));
         this.scale = new SlopVec3(v => rt._objectScale(id, v._x, v._y, v._z), 1, 1, 1);
@@ -163,6 +164,13 @@ class SlopObject {
     set active(v) {
         this._active = v;
         this._rt._objectActive(this._id, v ? 1 : 0);
+    }
+    get style() {
+        return this._style;
+    }
+    set style(v) {
+        this._style = v;
+        this._rt._objectTexmap(this._id, v);
     }
 }
 
@@ -288,6 +296,12 @@ class SlopCamera {
     set sensitivity(v) {
         this._sensitivity = v;
     }
+    get act_as() {
+        return this._behavior;
+    }
+    set act_as(v) {
+        this._rt._attachBehavior(this, v);
+    }
 }
 
 class SlopRuntime {
@@ -346,6 +360,7 @@ class SlopRuntime {
         this._objectColor = this.module.cwrap('s3d_object_color', null, ['number', 'number', 'number', 'number']);
         this._objectAlpha = this.module.cwrap('s3d_object_alpha', null, ['number', 'number']);
         this._objectActive = this.module.cwrap('s3d_object_active', null, ['number', 'number']);
+        this._objectTexmap = this.module.cwrap('s3d_object_texmap', null, ['number', 'number']);
         this._renderScene = this.module.cwrap('s3d_render_scene', null, []);
         this._lightAmbient = this.module.cwrap('s3d_light_ambient', null, ['number', 'number', 'number', 'number']);
         this._lightDirectional = this.module.cwrap('s3d_light_directional', null, [
@@ -525,10 +540,6 @@ class SlopRuntime {
         return l;
     }
     camera(...args) {
-        let behavior = null;
-        if (args.length > 0 && typeof args[args.length - 1] === 'string') {
-            behavior = args.pop();
-        }
         if (args.length < 3) throw new Error('camera() requires at least 3 args (px, py, pz)');
         const px = args[0],
             py = args[1],
@@ -548,9 +559,6 @@ class SlopRuntime {
         this._sceneCameras[id] = cam;
         if (this._sceneCameras.filter(Boolean).length === 1) {
             this._cameraActivate(id);
-        }
-        if (behavior) {
-            this._attachBehavior(cam, behavior);
         }
         return cam;
     }
@@ -1147,16 +1155,10 @@ function slopParse(tokens) {
                     line: ln,
                 };
             }
-            // camera creation: camera: [behavior,] px, py, pz [, tx, ty, tz]
-            const CAMERA_BEHAVIORS = new Set(['fps']);
+            // camera creation: camera: px, py, pz [, tx, ty, tz]
             if (at(TK.IDENT, 'camera')) {
                 eat(TK.IDENT);
                 eat(TK.COLON);
-                let behavior = null;
-                if (at(TK.IDENT) && CAMERA_BEHAVIORS.has(peek().val)) {
-                    behavior = eat(TK.IDENT).val;
-                    eat(TK.COMMA);
-                }
                 const args = [];
                 if (!at(TK.NEWLINE) && !at(TK.EOF)) {
                     args.push(parseExpr());
@@ -1170,7 +1172,6 @@ function slopParse(tokens) {
                 return {
                     type: 'CameraAssign',
                     target: left,
-                    behavior,
                     args,
                     line: ln,
                 };
@@ -1407,6 +1408,7 @@ function slopParse(tokens) {
 
 const SLOP_BUILTINS = new Set(['t', 'dt', 'mouse_x', 'mouse_y', 'mouse_left', 'mouse_right']);
 const SLOP_MATH = new Set(['sin', 'cos', 'tan', 'lerp', 'clamp', 'random', 'abs', 'min', 'max', 'range', 'key_down']);
+const SLOP_CONSTANTS = { ps1: '0', n64: '1', fps: "'fps'" };
 
 function slopGenerate(ast) {
     const lines = [];
@@ -1486,11 +1488,7 @@ function slopGenerate(ast) {
             case 'CameraAssign': {
                 const tgt = emitExpr(node.target);
                 const args = node.args.map(emitExpr).join(', ');
-                if (node.behavior) {
-                    emit(`${tgt} = _rt.camera(${args}, '${node.behavior}');`);
-                } else {
-                    emit(`${tgt} = _rt.camera(${args});`);
-                }
+                emit(`${tgt} = _rt.camera(${args});`);
                 break;
             }
             case 'LightAssign': {
@@ -1591,6 +1589,7 @@ function slopGenerate(ast) {
             case 'Bool':
                 return String(node.val);
             case 'Ident':
+                if (node.name in SLOP_CONSTANTS) return SLOP_CONSTANTS[node.name];
                 if (SLOP_BUILTINS.has(node.name)) return '_rt.' + node.name;
                 return '_s.' + node.name;
             case 'Dot':
