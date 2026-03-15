@@ -552,11 +552,12 @@ class SlopRuntime {
         this._mouseDeltaX = 0;
         this._mouseDeltaY = 0;
         this._pointerLockSetup = false;
-        document.addEventListener('keydown', e => {
+        this.canvas.setAttribute('tabindex', '0');
+        this.canvas.addEventListener('keydown', e => {
             if (e.keyCode < 256) this._keys[e.keyCode] = 1;
             if (document.pointerLockElement === this.canvas) e.preventDefault();
         });
-        document.addEventListener('keyup', e => {
+        this.canvas.addEventListener('keyup', e => {
             if (e.keyCode < 256) this._keys[e.keyCode] = 0;
             if (document.pointerLockElement === this.canvas) e.preventDefault();
         });
@@ -787,7 +788,6 @@ class SlopRuntime {
     _setupPointerLock() {
         if (this._pointerLockSetup) return;
         this._pointerLockSetup = true;
-        this.canvas.setAttribute('tabindex', '0');
         this.canvas.addEventListener('click', () => {
             this.canvas.requestPointerLock();
         });

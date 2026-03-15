@@ -45,9 +45,9 @@ html, body {
 
 #preview-float {
     position: absolute;
-    bottom: 40px;
+    top: 24px;
     right: 24px;
-    width: 420px;
+    width: 520px;
     z-index: 100;
     border-radius: 8px;
     background: transparent;
