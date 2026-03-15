@@ -558,7 +558,6 @@ class SlopRuntime {
         return l;
     }
     camera(...args) {
-        if (args.length < 3) throw new Error('camera() requires at least 3 args (px, py, pz)');
         const px = args[0],
             py = args[1],
             pz = args[2];
@@ -1185,7 +1184,6 @@ function slopParse(tokens) {
                         args.push(parseExpr());
                     }
                 }
-                if (args.length < 3) throw new Error(`camera: requires at least 3 args (px, py, pz) at line ${ln}`);
                 if (at(TK.NEWLINE)) eat(TK.NEWLINE);
                 return {
                     type: 'CameraAssign',
