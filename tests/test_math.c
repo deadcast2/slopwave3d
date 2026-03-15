@@ -394,6 +394,86 @@ TEST(rasterize_zbuffer_occlusion) {
     ASSERT_TRUE(r > b);
 }
 
+/* ── parenting tests ────────────────────────────────────────────────── */
+
+TEST(parent_world_matrix) {
+    s3d_init();
+    int mid = make_test_tri_mesh(0, 0, 0, 1, 0, 0, 0, 1, 0);
+    int parent = s3d_object_create(mid, -1);
+    int child = s3d_object_create(mid, -1);
+    s3d_object_position(parent, 10, 0, 0);
+    s3d_object_position(child, 5, 0, 0);
+    s3d_object_parent(child, parent);
+    /* create a camera so render_scene runs and rebuilds world matrices */
+    int cam = s3d_camera_create(0, 0, 50, 0, 0, 0);
+    s3d_camera_activate(cam);
+    s3d_render_scene();
+    /* child world position should be parent(10) + child(5) = 15 */
+    ASSERT_NEAR(g_engine.objects[child].world.m[12], 15.0f, 1e-4f);
+    ASSERT_NEAR(g_engine.objects[child].world.m[13], 0.0f, 1e-4f);
+    ASSERT_NEAR(g_engine.objects[child].world.m[14], 0.0f, 1e-4f);
+}
+
+TEST(parent_chain_3_deep) {
+    s3d_init();
+    int mid = make_test_tri_mesh(0, 0, 0, 1, 0, 0, 0, 1, 0);
+    int a = s3d_object_create(mid, -1);
+    int b = s3d_object_create(mid, -1);
+    int c = s3d_object_create(mid, -1);
+    s3d_object_position(a, 1, 0, 0);
+    s3d_object_position(b, 2, 0, 0);
+    s3d_object_position(c, 3, 0, 0);
+    s3d_object_parent(b, a);
+    s3d_object_parent(c, b);
+    int cam = s3d_camera_create(0, 0, 50, 0, 0, 0);
+    s3d_camera_activate(cam);
+    s3d_render_scene();
+    /* c world x = 1 + 2 + 3 = 6 */
+    ASSERT_NEAR(g_engine.objects[c].world.m[12], 6.0f, 1e-4f);
+    /* b world x = 1 + 2 = 3 */
+    ASSERT_NEAR(g_engine.objects[b].world.m[12], 3.0f, 1e-4f);
+}
+
+TEST(parent_self_rejected) {
+    s3d_init();
+    int mid = make_test_tri_mesh(0, 0, 0, 1, 0, 0, 0, 1, 0);
+    int obj = s3d_object_create(mid, -1);
+    s3d_object_parent(obj, obj);
+    ASSERT_TRUE(g_engine.objects[obj].parent_id == -1);
+}
+
+TEST(parent_cycle_rejected) {
+    s3d_init();
+    int mid = make_test_tri_mesh(0, 0, 0, 1, 0, 0, 0, 1, 0);
+    int a = s3d_object_create(mid, -1);
+    int b = s3d_object_create(mid, -1);
+    s3d_object_parent(b, a);
+    s3d_object_parent(a, b); /* would create cycle */
+    ASSERT_TRUE(g_engine.objects[a].parent_id == -1);
+}
+
+TEST(parent_destroy_unparents_children) {
+    s3d_init();
+    int mid = make_test_tri_mesh(0, 0, 0, 1, 0, 0, 0, 1, 0);
+    int parent = s3d_object_create(mid, -1);
+    int child = s3d_object_create(mid, -1);
+    s3d_object_parent(child, parent);
+    ASSERT_TRUE(g_engine.objects[child].parent_id == parent);
+    s3d_object_destroy(parent);
+    ASSERT_TRUE(g_engine.objects[child].parent_id == -1);
+}
+
+TEST(parent_unparent) {
+    s3d_init();
+    int mid = make_test_tri_mesh(0, 0, 0, 1, 0, 0, 0, 1, 0);
+    int a = s3d_object_create(mid, -1);
+    int b = s3d_object_create(mid, -1);
+    s3d_object_parent(b, a);
+    ASSERT_TRUE(g_engine.objects[b].parent_id == a);
+    s3d_object_parent(b, -1);
+    ASSERT_TRUE(g_engine.objects[b].parent_id == -1);
+}
+
 /* ── main ────────────────────────────────────────────────────────────── */
 
 int main(void) {
@@ -446,6 +526,14 @@ int main(void) {
     printf("rasterizer:\n");
     RUN(rasterize_fills_pixels);
     RUN(rasterize_zbuffer_occlusion);
+
+    printf("parenting:\n");
+    RUN(parent_world_matrix);
+    RUN(parent_chain_3_deep);
+    RUN(parent_self_rejected);
+    RUN(parent_cycle_rejected);
+    RUN(parent_destroy_unparents_children);
+    RUN(parent_unparent);
 
     printf("\n%d passed, %d failed\n", g_pass, g_fail);
     return g_fail > 0 ? 1 : 0;

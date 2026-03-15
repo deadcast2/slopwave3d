@@ -70,11 +70,12 @@ Outputs `web/slop3d_wasm.js` and `web/slop3d_wasm.wasm`. Open `http://localhost:
 
 ### Rendering Pipeline
 1. Use active camera's view/projection matrices (no rendering if no active camera)
-2. Sort: opaque objects first, then transparent back-to-front
-3. Per object: transform vertices to clip space, compute Gouraud lighting in world space
-4. Per triangle: backface cull → near-plane clip (Sutherland-Hodgman) → perspective divide → viewport transform
-5. Scanline rasterize with affine interpolation of z, u, v, r, g, b
-6. Per pixel: 16-bit z-test → nearest-neighbor texture sample → modulate by vertex color → fog blend → alpha blend → write
+2. Rebuild world matrices (parent × local model, memoized per frame)
+3. Sort: opaque objects first, then transparent back-to-front
+4. Per object: transform vertices to clip space, compute Gouraud lighting in world space
+5. Per triangle: backface cull → near-plane clip (Sutherland-Hodgman) → perspective divide → viewport transform
+6. Scanline rasterize with affine interpolation of z, u, v, r, g, b
+7. Per pixel: 16-bit z-test → nearest-neighbor texture sample → modulate by vertex color → fog blend → alpha blend → write
 
 ### WASM Memory
 - 16MB fixed heap (`ALLOW_MEMORY_GROWTH=0`)
@@ -121,6 +122,7 @@ scene main
 - Math (degree-based): `sin[]`, `cos[]`, `tan[]`, `lerp[]`, `clamp[]`, `random[]`, `abs[]`, `min[]`, `max[]`
 - Control flow: `if`/`elif`/`else`, `while`, `for x in range[n]`, `fn name: args`, `return`
 - Boolean: `and`, `or`, `not`, `true`, `false`
+- Constants: `none` (null/no value), `ps1`, `n64`, `fps`
 
 ### Objects, Cameras & Lights
 - `cam = camera: px, py, pz` — create a camera at position (target defaults to origin). First camera auto-activates. Reactive `.position`, `.target`, `.fov`, `.near`, `.far`
@@ -128,7 +130,9 @@ scene main
 - `cam = camera: fps, px, py, pz` — create an FPS camera with WASD movement + mouse look (click canvas to capture mouse). Reactive `.speed` (default 5), `.sensitivity` (default 0.15). Behavior runs before `update` block so user code can override position
 - `use: cam` — switch to a different camera for rendering
 - No implicit/default camera — a scene must create one before anything renders
-- `box = spawn: meshname, skinname` — create a scene object (reactive `.position`, `.rotation`, `.scale`, `.color`, `.alpha`)
+- `box = spawn: meshname, skinname` — create a scene object (reactive `.position`, `.rotation`, `.scale`, `.color`, `.alpha`, `.dad`/`.mom`)
+- `turret.dad = tank` or `turret.mom = tank` — parent an object (transforms propagate down hierarchy). `.dad` and `.mom` are interchangeable aliases
+- `turret.dad = none` — unparent an object. Destroying a parent auto-unparents children
 - `sun = ambient: r, g, b` — ambient light (reactive `.color`)
 - `sun = directional: r, g, b, dx, dy, dz` — directional light (reactive `.color`, `.direction`)
 - `glow = point: r, g, b, x, y, z, range` — point light (reactive `.color`, `.position`, `.range`)

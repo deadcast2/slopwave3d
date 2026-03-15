@@ -143,6 +143,7 @@ class SlopObject {
         this._alpha = 1;
         this._active = true;
         this._style = 0;
+        this._parent = null;
         this.position = new SlopVec3(v => rt._objectPosition(id, v._x, v._y, v._z));
         this.rotation = new SlopVec3(v => rt._objectRotation(id, v._x, v._y, v._z));
         this.scale = new SlopVec3(v => rt._objectScale(id, v._x, v._y, v._z), 1, 1, 1);
@@ -171,6 +172,19 @@ class SlopObject {
     set style(v) {
         this._style = v;
         this._rt._objectTexmap(this._id, v);
+    }
+    get dad() {
+        return this._parent;
+    }
+    set dad(v) {
+        this._parent = v;
+        this._rt._objectParent(this._id, v ? v._id : -1);
+    }
+    get mom() {
+        return this._parent;
+    }
+    set mom(v) {
+        this.dad = v;
     }
 }
 
@@ -361,6 +375,7 @@ class SlopRuntime {
         this._objectAlpha = this.module.cwrap('s3d_object_alpha', null, ['number', 'number']);
         this._objectActive = this.module.cwrap('s3d_object_active', null, ['number', 'number']);
         this._objectTexmap = this.module.cwrap('s3d_object_texmap', null, ['number', 'number']);
+        this._objectParent = this.module.cwrap('s3d_object_parent', null, ['number', 'number']);
         this._renderScene = this.module.cwrap('s3d_render_scene', null, []);
         this._lightAmbient = this.module.cwrap('s3d_light_ambient', null, ['number', 'number', 'number', 'number']);
         this._lightDirectional = this.module.cwrap('s3d_light_directional', null, [
@@ -502,6 +517,9 @@ class SlopRuntime {
             this._cameraDestroy(target.id);
             this._sceneCameras[target.id] = null;
         } else {
+            for (const obj of this._sceneObjects) {
+                if (obj._parent === target) obj._parent = null;
+            }
             this._objectDestroy(target.id);
             const i = this._sceneObjects.indexOf(target);
             if (i >= 0) this._sceneObjects.splice(i, 1);
@@ -1408,7 +1426,7 @@ function slopParse(tokens) {
 
 const SLOP_BUILTINS = new Set(['t', 'dt', 'mouse_x', 'mouse_y', 'mouse_left', 'mouse_right']);
 const SLOP_MATH = new Set(['sin', 'cos', 'tan', 'lerp', 'clamp', 'random', 'abs', 'min', 'max', 'range', 'key_down']);
-const SLOP_CONSTANTS = { ps1: '0', n64: '1', fps: "'fps'" };
+const SLOP_CONSTANTS = { ps1: '0', n64: '1', fps: "'fps'", none: 'null' };
 
 function slopGenerate(ast) {
     const lines = [];

@@ -102,6 +102,8 @@ typedef struct {
     int active;
     int mesh_id;
     int texture_id;
+    int parent_id;
+    uint32_t world_frame;
     S3D_Vec3 position;
     S3D_Vec3 rotation;
     S3D_Vec3 scale;
@@ -109,6 +111,7 @@ typedef struct {
     float alpha;
     int texmap;
     S3D_Mat4 model;
+    S3D_Mat4 world;
 } S3D_Object;
 
 void s3d_init(void);
@@ -146,6 +149,7 @@ void s3d_object_color(int object_id, float r, float g, float b);
 void s3d_object_alpha(int object_id, float a);
 void s3d_object_active(int object_id, int active);
 void s3d_object_texmap(int object_id, int mode);
+void s3d_object_parent(int object_id, int parent_id);
 void s3d_render_scene(void);
 
 void s3d_light_ambient(int light_id, float r, float g, float b);

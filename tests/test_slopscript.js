@@ -451,6 +451,21 @@ describe('CodeGen', () => {
         assert.ok(js.includes("_rt.loadTexture('assets/crate.jpg')"));
     });
 
+    it('generates dad parenting assignment', () => {
+        const js = gen('scene main\n    update\n        turret.dad = tank\n');
+        assert.ok(js.includes('_s.turret.dad = _s.tank;'));
+    });
+
+    it('generates mom parenting assignment', () => {
+        const js = gen('scene main\n    update\n        turret.mom = tank\n');
+        assert.ok(js.includes('_s.turret.mom = _s.tank;'));
+    });
+
+    it('generates none as null for unparenting', () => {
+        const js = gen('scene main\n    update\n        turret.dad = none\n');
+        assert.ok(js.includes('_s.turret.dad = null;'));
+    });
+
     it('full spinning cube generates valid structure', () => {
         const js = gen(
             'assets\n    model cube = cube.obj\nscene main\n    box = spawn: cube\n    cam = camera: 0, 1.5, 5\n    update\n        box.rotation.y = t * 30\n'

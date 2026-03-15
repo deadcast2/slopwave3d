@@ -1024,7 +1024,10 @@ int s3d_object_create(int mesh_id, int texture_id) {
             obj->color = s3d_vec3(1.0f, 1.0f, 1.0f);
             obj->alpha = 1.0f;
             obj->texmap = S3D_TEXMAP_AFFINE;
+            obj->parent_id = -1;
+            obj->world_frame = 0;
             rebuild_model_matrix(obj);
+            obj->world = obj->model;
             return i;
         }
     }
@@ -1034,6 +1037,11 @@ int s3d_object_create(int mesh_id, int texture_id) {
 EMSCRIPTEN_KEEPALIVE
 void s3d_object_destroy(int object_id) {
     S3D_CHECK_OBJECT(object_id);
+    for (int i = 0; i < S3D_MAX_OBJECTS; i++) {
+        if (g_engine.objects[i].active && g_engine.objects[i].parent_id == object_id) {
+            g_engine.objects[i].parent_id = -1;
+        }
+    }
     g_engine.objects[object_id].active = 0;
 }
 
@@ -1080,6 +1088,21 @@ EMSCRIPTEN_KEEPALIVE
 void s3d_object_texmap(int object_id, int mode) {
     S3D_CHECK_OBJECT_ACTIVE(object_id);
     g_engine.objects[object_id].texmap = mode;
+}
+
+EMSCRIPTEN_KEEPALIVE
+void s3d_object_parent(int object_id, int parent_id) {
+    S3D_CHECK_OBJECT_ACTIVE(object_id);
+    if (parent_id >= 0) {
+        S3D_CHECK_OBJECT_ACTIVE(parent_id);
+        if (parent_id == object_id) return;
+        int p = parent_id;
+        while (p >= 0) {
+            if (p == object_id) return;
+            p = g_engine.objects[p].parent_id;
+        }
+    }
+    g_engine.objects[object_id].parent_id = parent_id;
 }
 
 /* ── light API ───────────────────────────────────────────────────────── */
@@ -1141,6 +1164,31 @@ void s3d_fog_set(int enabled, float r, float g, float b, float start, float end)
     g_engine.fog.end = end;
 }
 
+/* ── world matrix computation ───────────────────────────────────────── */
+
+static uint32_t g_frame_counter = 0;
+
+static S3D_Mat4 get_world_matrix(int object_id) {
+    S3D_Object *obj = &g_engine.objects[object_id];
+    if (obj->world_frame == g_frame_counter) return obj->world;
+    if (obj->parent_id < 0 || !g_engine.objects[obj->parent_id].active) {
+        if (obj->parent_id >= 0) obj->parent_id = -1;
+        obj->world = obj->model;
+    } else {
+        obj->world = m4_multiply(get_world_matrix(obj->parent_id), obj->model);
+    }
+    obj->world_frame = g_frame_counter;
+    return obj->world;
+}
+
+static void rebuild_world_matrices(void) {
+    g_frame_counter++;
+    for (int i = 0; i < S3D_MAX_OBJECTS; i++) {
+        if (!g_engine.objects[i].active) continue;
+        get_world_matrix(i);
+    }
+}
+
 /* ── scene rendering ────────────────────────────────────────────────── */
 
 EMSCRIPTEN_KEEPALIVE
@@ -1150,6 +1198,8 @@ void s3d_render_scene(void) {
     if (!active_cam->active) return;
     S3D_Mat4 vp = active_cam->vp;
     S3D_Vec3 cam_pos = active_cam->position;
+
+    rebuild_world_matrices();
 
     int opaque[S3D_MAX_OBJECTS];
     int opaque_count = 0;
@@ -1163,9 +1213,9 @@ void s3d_render_scene(void) {
         if (obj->alpha >= 1.0f) {
             opaque[opaque_count++] = i;
         } else {
-            float dx = obj->model.m[12] - cam_pos.x;
-            float dy = obj->model.m[13] - cam_pos.y;
-            float dz = obj->model.m[14] - cam_pos.z;
+            float dx = obj->world.m[12] - cam_pos.x;
+            float dy = obj->world.m[13] - cam_pos.y;
+            float dz = obj->world.m[14] - cam_pos.z;
             transparent_dist[transparent_count] = dx * dx + dy * dy + dz * dz;
             transparent[transparent_count++] = i;
         }
@@ -1174,8 +1224,8 @@ void s3d_render_scene(void) {
     /* render opaque objects */
     for (int i = 0; i < opaque_count; i++) {
         S3D_Object *obj = &g_engine.objects[opaque[i]];
-        S3D_Mat4 mvp = m4_multiply(vp, obj->model);
-        draw_object_internal(obj->mesh_id, obj->texture_id, mvp, obj->model, obj->color, obj->alpha, obj->texmap);
+        S3D_Mat4 mvp = m4_multiply(vp, obj->world);
+        draw_object_internal(obj->mesh_id, obj->texture_id, mvp, obj->world, obj->color, obj->alpha, obj->texmap);
     }
 
     /* sort transparent objects back-to-front (insertion sort) */
@@ -1195,7 +1245,7 @@ void s3d_render_scene(void) {
     /* render transparent objects far-to-near */
     for (int i = 0; i < transparent_count; i++) {
         S3D_Object *obj = &g_engine.objects[transparent[i]];
-        S3D_Mat4 mvp = m4_multiply(vp, obj->model);
-        draw_object_internal(obj->mesh_id, obj->texture_id, mvp, obj->model, obj->color, obj->alpha, obj->texmap);
+        S3D_Mat4 mvp = m4_multiply(vp, obj->world);
+        draw_object_internal(obj->mesh_id, obj->texture_id, mvp, obj->world, obj->color, obj->alpha, obj->texmap);
     }
 }
