@@ -96,12 +96,11 @@ SlopScript is a custom DSL (`.slop` extension) that transpiles to JS targeting t
 ```
 assets
     model cube = cube.obj
-    skin crate = crate.jpg
 
 scene main
     cam = camera: 0, 1.5, 5
     sun = directional: 1.0, 0.9, 0.8, -1, -1, -1
-    box = spawn: cube, crate
+    box = spawn: cube
     box.position = 2.5, 0, 0
 
     update
@@ -131,6 +130,9 @@ scene main
 - `use: cam` — switch to a different camera for rendering
 - No implicit/default camera — a scene must create one before anything renders
 - `box = spawn: meshname, skinname` — create a scene object (reactive `.position`, `.rotation`, `.scale`, `.color`, `.alpha`, `.dad`/`.mom`)
+- `ground = terrain: skinname, cols, rows` — generate a connected terrain mesh centered at origin (reactive `.position`, `.rotation`, `.scale`, `.style`, `.color`, `.alpha`)
+- `ground = terrain: skinname, cols, rows, x, y, z` — generate terrain centered at (x,y,z)
+- `ground.hills = seed, height` — apply seeded height variation (seed drives noise pattern, height is max Y displacement). Vertices are shared so terrain is smooth and connected
 - `turret.dad = tank` or `turret.mom = tank` — parent an object (transforms propagate down hierarchy). `.dad` and `.mom` are interchangeable aliases
 - `turret.dad = none` — unparent an object. Destroying a parent auto-unparents children
 - `sun = ambient: r, g, b` — ambient light (reactive `.color`)

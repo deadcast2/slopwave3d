@@ -57,7 +57,7 @@ This mirrors how Shockwave 3D actually worked: a compiled engine (Intel's Intern
 | Max Meshes | 128 |
 | Max Objects | 256 |
 | Poly Budget | ~10,000 per scene |
-| Total Engine Size | ~2,700 lines (C) + ~1,200 lines (JS + SlopScript) |
+| Total Engine Size | ~1,250 lines (C) + ~1,900 lines (JS + SlopScript) |
 
 ## Build
 
@@ -82,12 +82,12 @@ Games are written in **SlopScript**, a minimal DSL with no boilerplate:
 ```
 assets
     model cube = cube.obj
-    skin crate = crate.jpg
 
 scene main
     sun = directional: 1.0, 0.9, 0.8, -1, -1, -1
-    box = spawn: cube, crate
-    camera.position = 0, 1.5, 5
+    cam = camera: 0, 1.5, 5
+    box = spawn: cube
+    box.color = 1.0, 0.6, 0.2
 
     update
         box.rotation.y = t * 30
@@ -108,20 +108,23 @@ Or write inline — no build step, no bundler, no quotes, no semicolons, no pare
 - **Indentation-based** syntax, no braces or semicolons
 - **No parentheses** — `sin[t]` for calls, `[a + b]` for grouping
 - **Reactive properties** — `box.rotation.y = t * 30` directly drives the engine
+- **Cameras** — `cam = camera: 0, 1.5, 5` with FPS mode (`cam.act_as = fps` for WASD + mouse look)
+- **Procedural terrain** — `ground = terrain: grass_tex, 20, 20` generates a connected mesh with optional `ground.hills = seed, height` for height variation
+- **Object parenting** — `turret.dad = tank` for scene graph hierarchy
+- **Texture modes** — `box.style = n64` for perspective-correct texturing, `ps1` for affine
 - **Degree-based trig** — `sin[]`, `cos[]`, `tan[]` all take degrees
 - **Named scenes** with `goto:` for transitions and auto-cleanup
 - **Built-in `t`** (elapsed seconds) and **`dt`** (delta time)
-- **Lights as objects** — `sun = directional: r, g, b, dx, dy, dz` with reactive `.color`, `.position`, `.direction`, `.range`
-- **`off:`/`on:`** — toggle lights and objects: `off: sun`, `on: box`
-- **`kill:`** — destroy objects: `kill: box`
+- **Lights** — ambient, directional, point, and spot with reactive `.color`, `.position`, `.direction`, `.range`
+- **`off:`/`on:`/`kill:`** — toggle or destroy objects, lights, and cameras
 - Control flow: `if`/`elif`/`else`, `while`, `for/in`, `fn`, `return`
 
 ## Why?
 
-- The entire engine fits in an AI context window (~20K tokens). Every line is visible, every function is reachable.
+- The entire engine fits in an AI context window. Every line is visible, every function is reachable.
 - No build complexity. One C file, one JS file, one `make` command.
 - Shockwave 3D died in 2019. This is its ghost, haunting your browser.
-- Sometimes you don't want 4K ray-traced reflections. Sometimes you want 128 pixels of a crate texture wobbling on a polygon.
+- Sometimes you don't want 4K ray-traced reflections. Sometimes you want a polygon wobbling at 320x240.
 
 ## Development
 

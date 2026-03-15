@@ -188,6 +188,118 @@ class SlopObject {
     }
 }
 
+class SlopTileGrid {
+    constructor(rt, obj, meshId, cols, rows) {
+        this._rt = rt;
+        this._obj = obj;
+        this._meshId = meshId;
+        this.cols = cols;
+        this.rows = rows;
+        this._heights = new Float32Array((cols + 1) * (rows + 1));
+        this.hills = new SlopVec3(v => this._applyHills(v._x, v._y), 0, 0, 0);
+    }
+    get id() {
+        return this._obj.id;
+    }
+    get _id() {
+        return this._obj._id;
+    }
+    get position() {
+        return this._obj.position;
+    }
+    get rotation() {
+        return this._obj.rotation;
+    }
+    get scale() {
+        return this._obj.scale;
+    }
+    get active() {
+        return this._obj.active;
+    }
+    set active(v) {
+        this._obj.active = v;
+    }
+    get style() {
+        return this._obj.style;
+    }
+    set style(v) {
+        this._obj.style = v;
+    }
+    get color() {
+        return this._obj.color;
+    }
+    get alpha() {
+        return this._obj.alpha;
+    }
+    set alpha(v) {
+        this._obj.alpha = v;
+    }
+    _hash(x, z, seed) {
+        let h = (seed * 374761393 + x * 668265263 + z * 1274126177) | 0;
+        h = ((h ^ (h >> 13)) * 1103515245) | 0;
+        return ((h ^ (h >> 16)) & 0x7fffffff) / 0x7fffffff;
+    }
+    _noise(fx, fz, seed) {
+        const x0 = Math.floor(fx),
+            z0 = Math.floor(fz);
+        const x1 = x0 + 1,
+            z1 = z0 + 1;
+        const sx = fx - x0,
+            sz = fz - z0;
+        const n00 = this._hash(x0, z0, seed);
+        const n10 = this._hash(x1, z0, seed);
+        const n01 = this._hash(x0, z1, seed);
+        const n11 = this._hash(x1, z1, seed);
+        const nx0 = n00 + (n10 - n00) * sx;
+        const nx1 = n01 + (n11 - n01) * sx;
+        return nx0 + (nx1 - nx0) * sz;
+    }
+    _applyHills(seed, height) {
+        if (!height) return;
+        const vCols = this.cols + 1,
+            vRows = this.rows + 1;
+        const halfW = this.cols / 2,
+            halfD = this.rows / 2;
+        for (let r = 0; r < vRows; r++) {
+            for (let c = 0; c < vCols; c++) {
+                this._heights[r * vCols + c] = this._noise(c * 0.3, r * 0.3, seed) * height;
+            }
+        }
+        this._writeVertices();
+    }
+    _writeVertices() {
+        const vCols = this.cols + 1,
+            vRows = this.rows + 1;
+        const halfW = this.cols / 2,
+            halfD = this.rows / 2;
+        const ptr = this._rt._meshGetVertexPtr(this._meshId);
+        const floats = new Float32Array(this._rt.module.HEAPU8.buffer, ptr, vCols * vRows * 8);
+        for (let r = 0; r < vRows; r++) {
+            for (let c = 0; c < vCols; c++) {
+                const vi = r * vCols + c;
+                const off = vi * 8;
+                const y = this._heights[vi];
+                floats[off] = c - halfW;
+                floats[off + 1] = y;
+                floats[off + 2] = r - halfD;
+                // Compute normal from neighbors
+                const yL = c > 0 ? this._heights[vi - 1] : y;
+                const yR = c < this.cols ? this._heights[vi + 1] : y;
+                const yD = r > 0 ? this._heights[vi - vCols] : y;
+                const yU = r < this.rows ? this._heights[vi + vCols] : y;
+                const nx = yL - yR;
+                const nz = yD - yU;
+                const ny = 2.0;
+                const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+                floats[off + 3] = nx / len;
+                floats[off + 4] = ny / len;
+                floats[off + 5] = nz / len;
+                // UVs stay the same (set once in tile())
+            }
+        }
+    }
+}
+
 class SlopLight {
     constructor(rt, id, type) {
         this._rt = rt;
@@ -366,6 +478,9 @@ class SlopRuntime {
         this._textureCreate = this.module.cwrap('s3d_texture_create', 'number', ['number', 'number']);
         this._textureGetDataPtr = this.module.cwrap('s3d_texture_get_data_ptr', 'number', ['number']);
         this._meshLoadObj = this.module.cwrap('s3d_mesh_load_obj', 'number', ['number', 'number']);
+        this._meshCreate = this.module.cwrap('s3d_mesh_create', 'number', ['number', 'number']);
+        this._meshGetVertexPtr = this.module.cwrap('s3d_mesh_get_vertex_ptr', 'number', ['number']);
+        this._meshGetIndexPtr = this.module.cwrap('s3d_mesh_get_index_ptr', 'number', ['number']);
         this._objectCreate = this.module.cwrap('s3d_object_create', 'number', ['number', 'number']);
         this._objectDestroy = this.module.cwrap('s3d_object_destroy', null, ['number']);
         this._objectPosition = this.module.cwrap('s3d_object_position', null, ['number', 'number', 'number', 'number']);
@@ -512,10 +627,69 @@ class SlopRuntime {
         this._sceneObjects.push(obj);
         return obj;
     }
+    terrain(texName, cols, rows, cx, cy, cz) {
+        cx = cx || 0;
+        cy = cy || 0;
+        cz = cz || 0;
+        const tid = texName ? this.assets.textures[texName] : -1;
+        const vCols = cols + 1,
+            vRows = rows + 1;
+        const vertCount = vCols * vRows;
+        const triCount = cols * rows * 2;
+        const meshId = this._meshCreate(vertCount, triCount);
+        if (meshId < 0) throw new Error('No free mesh slots for terrain');
+        const halfW = cols / 2,
+            halfD = rows / 2;
+        // Write vertices: position + normal + UV (8 floats per vertex)
+        const vPtr = this._meshGetVertexPtr(meshId);
+        const vFloats = new Float32Array(this.module.HEAPU8.buffer, vPtr, vertCount * 8);
+        for (let r = 0; r < vRows; r++) {
+            for (let c = 0; c < vCols; c++) {
+                const off = (r * vCols + c) * 8;
+                vFloats[off] = c - halfW; // x
+                vFloats[off + 1] = 0; // y
+                vFloats[off + 2] = r - halfD; // z
+                vFloats[off + 3] = 0; // nx
+                vFloats[off + 4] = 1; // ny
+                vFloats[off + 5] = 0; // nz
+                vFloats[off + 6] = c % 2 === 0 ? 0 : 1; // u — tile UV per cell
+                vFloats[off + 7] = r % 2 === 0 ? 0 : 1; // v — tile UV per cell
+            }
+        }
+        // Write triangle indices (2 tris per cell, CW winding)
+        const iPtr = this._meshGetIndexPtr(meshId);
+        const indices = new Uint16Array(this.module.HEAPU8.buffer, iPtr, triCount * 3);
+        let idx = 0;
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const tl = r * vCols + c;
+                const tr = tl + 1;
+                const bl = tl + vCols;
+                const br = bl + 1;
+                // Triangle 1: tl, tr, bl (CW from above)
+                indices[idx++] = tl;
+                indices[idx++] = tr;
+                indices[idx++] = bl;
+                // Triangle 2: tr, br, bl (CW from above)
+                indices[idx++] = tr;
+                indices[idx++] = br;
+                indices[idx++] = bl;
+            }
+        }
+        const oid = this._objectCreate(meshId, tid);
+        const obj = new SlopObject(this, oid);
+        obj.position.setAll(cx, cy, cz);
+        this._sceneObjects.push(obj);
+        return new SlopTileGrid(this, obj, meshId, cols, rows);
+    }
     kill(target) {
         if (target instanceof SlopCamera) {
             this._cameraDestroy(target.id);
             this._sceneCameras[target.id] = null;
+        } else if (target instanceof SlopTileGrid) {
+            this._objectDestroy(target._obj._id);
+            const i = this._sceneObjects.indexOf(target._obj);
+            if (i >= 0) this._sceneObjects.splice(i, 1);
         } else {
             for (const obj of this._sceneObjects) {
                 if (obj._parent === target) obj._parent = null;
@@ -1172,6 +1346,24 @@ function slopParse(tokens) {
                     line: ln,
                 };
             }
+            // terrain: skin, cols, rows [, cx, cy, cz]
+            if (at(TK.IDENT, 'terrain')) {
+                eat(TK.IDENT);
+                eat(TK.COLON);
+                const args = [];
+                args.push(parseExpr());
+                while (at(TK.COMMA)) {
+                    eat(TK.COMMA);
+                    args.push(parseExpr());
+                }
+                if (at(TK.NEWLINE)) eat(TK.NEWLINE);
+                return {
+                    type: 'TerrainAssign',
+                    target: left,
+                    args,
+                    line: ln,
+                };
+            }
             // camera creation: camera: px, py, pz [, tx, ty, tz]
             if (at(TK.IDENT, 'camera')) {
                 eat(TK.IDENT);
@@ -1499,6 +1691,15 @@ function slopGenerate(ast) {
                 const tgt = emitExpr(node.target);
                 const args = node.skin ? `'${node.mesh}', '${node.skin}'` : `'${node.mesh}'`;
                 emit(`${tgt} = _rt.spawn(${args});`);
+                break;
+            }
+            case 'TerrainAssign': {
+                const tgt = emitExpr(node.target);
+                const args = node.args.map((a, i) => {
+                    if (i === 0) return `'${a.name}'`;
+                    return emitExpr(a);
+                });
+                emit(`${tgt} = _rt.terrain(${args.join(', ')});`);
                 break;
             }
             case 'CameraAssign': {

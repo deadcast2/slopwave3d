@@ -856,11 +856,11 @@ int s3d_mesh_load_obj(const char *obj_text, int len) {
                 }
             }
 
-            /* fan-triangulate */
+            /* fan-triangulate (swap i1/i2 to convert OBJ CCW → engine CW) */
             for (int i = 1; i < face_count - 1 && tri_count < S3D_OBJ_MAX * 2; i++) {
                 tmp_tris[tri_count].i0 = (uint16_t)face_verts[0];
-                tmp_tris[tri_count].i1 = (uint16_t)face_verts[i];
-                tmp_tris[tri_count].i2 = (uint16_t)face_verts[i + 1];
+                tmp_tris[tri_count].i1 = (uint16_t)face_verts[i + 1];
+                tmp_tris[tri_count].i2 = (uint16_t)face_verts[i];
                 tri_count++;
             }
         }

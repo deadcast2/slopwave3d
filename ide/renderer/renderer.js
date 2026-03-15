@@ -5,14 +5,14 @@ const DEFAULT_BG = '#000000';
 
 const DEFAULT_SOURCE = `assets
     model cube = cube.obj
-    skin crate = crate.jpg
 
 scene main
     fill = ambient: 0.3, 0.3, 0.3
     sun = directional: 1.0, 0.9, 0.8, -1, -1, -1
 
-    box = spawn: cube, crate
     cam = camera: 0, 1.5, 5
+    box = spawn: cube
+    box.color = 1.0, 0.6, 0.2
 
     update
         box.rotation.y = t * 30

@@ -9,11 +9,12 @@ const src = fs.readFileSync(path.join(__dirname, '..', 'js', 'slop3d.js'), 'utf8
 const stripped = src.replace(/if \(typeof document[\s\S]*$/, '').replace(/class SlopScript \{[\s\S]*?^\}/m, '');
 const mod = new Function(
     stripped +
-        '\nreturn { SlopVec3, SlopObject, SlopLight, SlopCamera, SlopRuntime, slopLex, slopParse, slopGenerate, _sin, _cos, _tan, _lerp, _clamp, _random, _abs, _min, _max, _range };'
+        '\nreturn { SlopVec3, SlopObject, SlopTileGrid, SlopLight, SlopCamera, SlopRuntime, slopLex, slopParse, slopGenerate, _sin, _cos, _tan, _lerp, _clamp, _random, _abs, _min, _max, _range };'
 );
 const {
     SlopVec3,
     SlopObject,
+    SlopTileGrid,
     SlopLight,
     SlopCamera,
     SlopRuntime,
@@ -302,6 +303,20 @@ describe('Parser', () => {
         assert.equal(stmt.type, 'CameraAssign');
         assert.equal(stmt.args.length, 3);
     });
+
+    it('parses terrain with cols and rows', () => {
+        const ast = parse('scene main\n    ground = terrain: tex, 10, 10\n');
+        const stmt = ast.scenes[0].body[0];
+        assert.equal(stmt.type, 'TerrainAssign');
+        assert.equal(stmt.args.length, 3);
+    });
+
+    it('parses terrain with position', () => {
+        const ast = parse('scene main\n    ground = terrain: tex, 10, 10, 5, 0, 5\n');
+        const stmt = ast.scenes[0].body[0];
+        assert.equal(stmt.type, 'TerrainAssign');
+        assert.equal(stmt.args.length, 6);
+    });
 });
 
 // --- Code Generator Tests ---
@@ -451,6 +466,16 @@ describe('CodeGen', () => {
         assert.ok(js.includes("_rt.loadTexture('assets/crate.jpg')"));
     });
 
+    it('generates terrain call', () => {
+        const js = gen('scene main\n    ground = terrain: tex, 10, 10\n');
+        assert.ok(js.includes("_rt.terrain('tex', 10, 10)"));
+    });
+
+    it('generates terrain call with position', () => {
+        const js = gen('scene main\n    ground = terrain: tex, 10, 10, 5, 0, 5\n');
+        assert.ok(js.includes("_rt.terrain('tex', 10, 10, 5, 0, 5)"));
+    });
+
     it('generates dad parenting assignment', () => {
         const js = gen('scene main\n    update\n        turret.dad = tank\n');
         assert.ok(js.includes('_s.turret.dad = _s.tank;'));
@@ -565,6 +590,25 @@ describe('Runtime helpers', () => {
         l.range = 20;
         assert.equal(l.range, 20);
         assert.equal(callCount, 1);
+    });
+
+    it('SlopTileGrid noise produces varied heights', () => {
+        const obj = {
+            position: new SlopVec3(() => {}),
+            rotation: new SlopVec3(() => {}),
+            scale: new SlopVec3(() => {}, 1, 1, 1),
+            active: true,
+            _id: 0,
+            id: 0,
+        };
+        const grid = new SlopTileGrid(null, obj, 0, 2, 2);
+        // Test noise produces different values for different positions
+        const v1 = grid._noise(0, 0, 42);
+        const v2 = grid._noise(1, 0, 42);
+        const v3 = grid._noise(0, 1, 42);
+        assert.ok(v1 >= 0 && v1 <= 1, 'Noise should be in [0,1]');
+        assert.ok(v2 >= 0 && v2 <= 1, 'Noise should be in [0,1]');
+        assert.ok(Math.abs(v1 - v2) > 0.001 || Math.abs(v1 - v3) > 0.001, 'Noise should vary');
     });
 
     it('SlopLight directional flushes with direction', () => {
